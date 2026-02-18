@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocConvert Pro - Modular Data Converter</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container modular-app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-cubes sidebar-logo"></i>
+                <h2>DocConvert<span>Pro</span></h2>
+                <p class="sidebar-tagline">Modular Conversion Engine</p>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="active">
+                        <a href="#">
+                            <i class="fas fa-database"></i>
+                            <span>Data Converter</span>
+                            <span class="nav-badge">JSON, CSV, NDJSON</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="module-status">
+                    <i class="fas fa-circle" style="color: #10b981;"></i>
+                    <span>Converter Modules Ready</span>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="content-header">
+                <div class="header-title">
+                    <h1>Modular Data Converter <span class="module-badge">v3.0</span></h1>
+                    <p>Convert between formats and schema versions with isolated modules</p>
+                </div>
+            </header>
+
+            <section class="modular-converter-panel">
+                <div class="panel-head">
+                    <h2><i class="fas fa-random"></i> Conversion Workspace</h2>
+                    <p>Pipeline: Parse -> Version Map -> Serialize</p>
+                </div>
+
+                <div class="control-grid">
+                    <label class="control-item">
+                        <span>Input Format</span>
+                        <select id="input-format">
+                            <option value="json">JSON</option>
+                            <option value="csv">CSV</option>
+                            <option value="ndjson">NDJSON</option>
+                            <option value="keyvalue">Key/Value</option>
+                        </select>
+                    </label>
+
+                    <label class="control-item">
+                        <span>Output Format</span>
+                        <select id="output-format">
+                            <option value="json">JSON</option>
+                            <option value="csv">CSV</option>
+                            <option value="ndjson">NDJSON</option>
+                            <option value="keyvalue">Key/Value</option>
+                        </select>
+                    </label>
+
+                    <label class="control-item">
+                        <span>Input Version</span>
+                        <select id="input-version">
+                            <option value="v1">v1</option>
+                            <option value="v2">v2</option>
+                            <option value="v3">v3</option>
+                        </select>
+                    </label>
+
+                    <label class="control-item">
+                        <span>Output Version</span>
+                        <select id="output-version">
+                            <option value="v1">v1</option>
+                            <option value="v2" selected>v2</option>
+                            <option value="v3">v3</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="button-row">
+                    <button id="convert-btn" class="action-btn primary"><i class="fas fa-play"></i> Convert</button>
+                    <button id="swap-btn" class="action-btn"><i class="fas fa-exchange-alt"></i> Swap Formats</button>
+                    <button id="sample-btn" class="action-btn"><i class="fas fa-vial"></i> Load Sample</button>
+                    <button id="clear-btn" class="action-btn"><i class="fas fa-trash"></i> Clear</button>
+                </div>
+
+                <div class="editor-grid">
+                    <div class="editor-card">
+                        <h3><i class="fas fa-file-import"></i> Input Data</h3>
+                        <textarea id="input-data" spellcheck="false" placeholder="Paste source data here..."></textarea>
+                    </div>
+
+                    <div class="editor-card">
+                        <h3><i class="fas fa-file-export"></i> Output Data</h3>
+                        <textarea id="output-data" spellcheck="false" readonly placeholder="Converted data appears here..."></textarea>
+                    </div>
+                </div>
+
+                <div class="status-area" id="status-area">Ready. Choose formats, versions, and run conversion.</div>
+            </section>
+        </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
