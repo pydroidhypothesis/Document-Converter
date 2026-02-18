@@ -100,8 +100,8 @@ python document_converter.py info document.pdf
 
 1. **Clone or download the repository**
 ```bash
-git clone https://github.com/yourusername/doc-convert-toolkit.git
-cd doc-convert-toolkit
+git clone https://github.com/pydroidhypothesis/Document-Converter.git
+cd doc-convert-toolkit or seomthing like that on the folder downloaded
 ```
 
 2. **Install required packages**
