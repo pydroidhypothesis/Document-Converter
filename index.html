@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocConvert Pro - Document Conversion & Compression Toolkit</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-file-alt sidebar-logo"></i>
+                <h2>DocConvert<span>Pro</span></h2>
+                <p class="sidebar-tagline">Conversion Toolkit</p>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="active">
+                        <a href="#dashboard">
+                            <i class="fas fa-tachometer-alt"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    
+                    <!-- CONVERSION TOOLS SECTION -->
+                    <li class="nav-section">Document Conversion</li>
+                    <li>
+                        <a href="#text-to-pdf">
+                            <i class="fas fa-file-alt"></i>
+                            <span>Text to PDF</span>
+                            <span class="nav-badge">Basic</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#image-to-pdf">
+                            <i class="fas fa-image"></i>
+                            <span>Image to PDF</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#docx-to-pdf">
+                            <i class="fas fa-file-word"></i>
+                            <span>Word to PDF</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#excel-csv">
+                            <i class="fas fa-file-excel"></i>
+                            <span>Excel ⇄ CSV</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#json-csv">
+                            <i class="fas fa-file-code"></i>
+                            <span>JSON to CSV</span>
+                        </a>
+                    </li>
+                    
+                    <!-- COMPRESSION SECTION -->
+                    <li class="nav-section">Compression Tools</li>
+                    <li>
+                        <a href="#zip-compress">
+                            <i class="fas fa-file-archive"></i>
+                            <span>ZIP Compressor</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#tar-compress">
+                            <i class="fas fa-box"></i>
+                            <span>TAR Creator</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#gz-compress">
+                            <i class="fas fa-compress"></i>
+                            <span>GZIP Compression</span>
+                            <span class="nav-badge pro">Advanced</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#extract">
+                            <i class="fas fa-file-export"></i>
+                            <span>Extract Archives</span>
+                        </a>
+                    </li>
+                    
+                    <!-- PDF OPERATIONS -->
+                    <li class="nav-section">PDF Operations</li>
+                    <li>
+                        <a href="#merge-pdf">
+                            <i class="fas fa-object-group"></i>
+                            <span>Merge PDFs</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#split-pdf">
+                            <i class="fas fa-cut"></i>
+                            <span>Split PDF</span>
+                        </a>
+                    </li>
+                    
+                    <!-- BATCH PROCESSING -->
+                    <li class="nav-section">Batch Processing</li>
+                    <li>
+                        <a href="#batch-convert">
+                            <i class="fas fa-layer-group"></i>
+                            <span>Batch Convert</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#watch-folder">
+                            <i class="fas fa-eye"></i>
+                            <span>Watch Folder</span>
+                        </a>
+                    </li>
+                    
+                    <!-- FILE MANAGEMENT -->
+                    <li class="nav-section">File Management</li>
+                    <li>
+                        <a href="#file-info">
+                            <i class="fas fa-info-circle"></i>
+                            <span>File Information</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#organize">
+                            <i class="fas fa-folder-tree"></i>
+                            <span>Organize Files</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#duplicates">
+                            <i class="fas fa-copy"></i>
+                            <span>Find Duplicates</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="#settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+                <a href="#history">
+                    <i class="fas fa-history"></i>
+                    <span>History</span>
+                </a>
+                <a href="#api">
+                    <i class="fas fa-code"></i>
+                    <span>API Access</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Dynamic Header -->
+            <header class="content-header">
+                <div class="header-title">
+                    <h1>Document Conversion Toolkit</h1>
+                    <p>Convert, compress, and manage your documents with ease</p>
+                </div>
+                <div class="header-actions">
+                    <button class="action-btn"><i class="fas fa-history"></i> Recent</button>
+                    <button class="action-btn"><i class="fas fa-star"></i> Favorites</button>
+                    <button class="action-btn primary"><i class="fas fa-upload"></i> Upload</button>
+                </div>
+            </header>
+
+            <!-- QUICK CONVERTER TOOL -->
+            <div class="quick-converter">
+                <h3><i class="fas fa-bolt"></i> Quick Convert</h3>
+                <div class="converter-box">
+                    <div class="file-drop-area">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p>Drag & drop files here or <span class="browse-link">browse</span></p>
+                        <small>Supported: PDF, DOCX, TXT, JPG, PNG, CSV, XLSX, ZIP</small>
+                    </div>
+                    <div class="converter-options">
+                        <select class="convert-to-select">
+                            <option value="pdf">Convert to PDF</option>
+                            <option value="csv">Convert to CSV</option>
+                            <option value="xlsx">Convert to Excel</option>
+                            <option value="txt">Convert to Text</option>
+                            <option value="zip">Compress to ZIP</option>
+                        </select>
+                        <button class="convert-btn"><i class="fas fa-sync-alt"></i> Convert Now</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MAIN TOOLS GRID -->
+            <div class="tools-section">
+                <div class="section-header">
+                    <h2>Popular Conversion Tools</h2>
+                    <div class="section-actions">
+                        <button class="view-all">View All <i class="fas fa-arrow-right"></i></button>
+                    </div>
+                </div>
+
+                <div class="tools-grid">
+                    <!-- Text to PDF -->
+                    <div class="tool-card" data-tool="text-to-pdf">
+                        <div class="tool-icon" style="background: #e8f0fe; color: #1a73e8;">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <div class="tool-info">
+                            <h3>Text to PDF</h3>
+                            <p>Convert text documents to PDF format</p>
+                            <div class="tool-meta">
+                                <span class="tool-tag"><i class="far fa-clock"></i> Instant</span>
+                                <span class="tool-tag"><i class="fas fa-file"></i> .txt, .md</span>
+                            </div>
+                        </div>
+                        <button class="tool-btn">Use Tool <i class="fas fa-chevron-right"></i></button>
+                    </div>
+
+                    <!-- Image to PDF -->
+                    <div class="tool-card" data-tool="image-to-pdf">
+                        <div class="tool-icon" style="background: #e6f4ea; color: #137333;">
+                            <i class="fas fa-image"></i>
+                        </div>
+                        <div class="tool-info">
+                            <h3>Image to PDF</h3>
+                            <p>Convert JPG, PNG to PDF</p>
+                            <div class="tool-meta">
+                                <span class="tool-tag"><i class="fas fa-layer-group"></i> Multi-page</span>
+                                <span class="tool-tag"><i class="fas fa-magic"></i> Auto</span>
+                            </div>
+                        </div>
+                        <button class="tool-btn">Use Tool <i class="fas fa-chevron-right"></i></button>
+                    </div>
+
+                    <!-- Excel to CSV -->
+                    <div class="tool-card" data-tool="excel-csv">
+                        <div class="tool-icon" style="background: #fce8e6; color: #c5221f;">
+                            <i class="fas fa-file-excel"></i>
+                        </div>
+                        <div class="tool-info">
+                            <h3>Excel ⇄ CSV</h3>
+                            <p>Convert between Excel and CSV formats</p>
+                            <div class="tool-meta">
+                                <span class="tool-tag"><i class="fas fa-table"></i> Sheets</span>
+                                <span class="tool-tag"><i class="fas fa-code"></i> UTF-8</span>
+                            </div>
+                        </div>
+                        <button class="tool-btn">Use Tool <i class="fas fa-chevron-right"></i></button>
+                    </div>
+
+                    <!-- ZIP Compressor -->
+                    <div class="tool-card" data-tool="zip-compress">
+                        <div class="tool-icon" style="background: #f1f3f4; color: #5f6368;">
+                            <i class="fas fa-file-archive"></i>
+                        </div>
+                        <div class="tool-info">
+                            <h3>ZIP Compressor</h3>
+                            <p>Compress files and folders to ZIP</p>
+                            <div class="tool-meta">
+                                <span class="tool-tag"><i class="fas fa-chart-line"></i> Up to 80%</span>
+                                <span class="tool-tag"><i class="fas fa-folder"></i> Batch</span>
+                            </div>
+                        </div>
+                        <button class="tool-btn">Use Tool <i class="fas fa-chevron-right"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PDF OPERATIONS SECTION -->
+            <div class="tools-section">
+                <div class="section-header">
+                    <h2>PDF Operations</h2>
+                    <div class="section-actions">
+                        <button class="view-all">All PDF Tools <i class="fas fa-arrow-right"></i></button>
+                    </div>
+                </div>
+
+                <div class="pdf-operations">
+                    <!-- Merge PDF -->
+                    <div class="pdf-op-card">
+                        <div class="pdf-op-header">
+                            <i class="fas fa-object-group"></i>
+                            <h3>Merge PDFs</h3>
+                        </div>
+                        <div class="pdf-op-body">
+                            <div class="file-list" id="merge-file-list">
+                                <div class="empty-list">No files selected</div>
+                            </div>
+                            <button class="add-files-btn"><i class="fas fa-plus"></i> Add PDF Files</button>
+                        </div>
+                        <div class="pdf-op-footer">
+                            <input type="text" placeholder="Output filename" class="output-name">
+                            <button class="process-btn">Merge PDFs</button>
+                        </div>
+                    </div>
+
+                    <!-- Split PDF -->
+                    <div class="pdf-op-card">
+                        <div class="pdf-op-header">
+                            <i class="fas fa-cut"></i>
+                            <h3>Split PDF</h3>
+                        </div>
+                        <div class="pdf-op-body">
+                            <div class="file-select">
+                                <i class="fas fa-file-pdf"></i>
+                                <span>Select PDF to split</span>
+                                <button class="browse-btn">Browse</button>
+                            </div>
+                            <div class="split-options">
+                                <label>
+                                    <input type="radio" name="split-mode" checked> Split all pages
+                                </label>
+                                <label>
+                                    <input type="radio" name="split-mode"> Custom pages
+                                </label>
+                                <input type="text" placeholder="e.g., 1,3,5-8" class="pages-input" disabled>
+                            </div>
+                        </div>
+                        <div class="pdf-op-footer">
+                            <button class="process-btn">Split PDF</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BATCH PROCESSING SECTION -->
+            <div class="tools-section">
+                <div class="section-header">
+                    <h2>Batch Processing</h2>
+                    <div class="section-actions">
+                        <button class="view-all">Configure Rules <i class="fas fa-cog"></i></button>
+                    </div>
+                </div>
+
+                <div class="batch-processing">
+                    <div class="batch-config">
+                        <div class="config-row">
+                            <label>Input Folder:</label>
+                            <div class="folder-select">
+                                <input type="text" placeholder="Select input folder" readonly>
+                                <button class="browse-folder"><i class="fas fa-folder-open"></i> Browse</button>
+                            </div>
+                        </div>
+                        <div class="config-row">
+                            <label>Output Folder:</label>
+                            <div class="folder-select">
+                                <input type="text" placeholder="Select output folder" readonly>
+                                <button class="browse-folder"><i class="fas fa-folder-open"></i> Browse</button>
+                            </div>
+                        </div>
+                        <div class="config-row">
+                            <label>Convert to:</label>
+                            <select class="batch-format">
+                                <option value="pdf">PDF</option>
+                                <option value="csv">CSV</option>
+                                <option value="xlsx">Excel (XLSX)</option>
+                                <option value="zip">ZIP Archive</option>
+                            </select>
+                        </div>
+                        <div class="config-row">
+                            <label>Options:</label>
+                            <div class="batch-options">
+                                <label><input type="checkbox"> Include subfolders</label>
+                                <label><input type="checkbox"> Overwrite existing</label>
+                                <label><input type="checkbox"> Create log file</label>
+                            </div>
+                        </div>
+                        <button class="start-batch"><i class="fas fa-play"></i> Start Batch Process</button>
+                    </div>
+                    <div class="batch-preview">
+                        <h4>Files to process:</h4>
+                        <div class="preview-list">
+                            <div class="preview-item">
+                                <i class="fas fa-file-pdf"></i>
+                                <span>document1.pdf</span>
+                                <span class="file-size">2.3 MB</span>
+                            </div>
+                            <div class="preview-item">
+                                <i class="fas fa-file-word"></i>
+                                <span>report.docx</span>
+                                <span class="file-size">1.1 MB</span>
+                            </div>
+                            <div class="preview-item">
+                                <i class="fas fa-file-image"></i>
+                                <span>scan001.jpg</span>
+                                <span class="file-size">4.5 MB</span>
+                            </div>
+                            <div class="preview-item">
+                                <i class="fas fa-file-excel"></i>
+                                <span>data.xlsx</span>
+                                <span class="file-size">856 KB</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FILE INFORMATION TOOL -->
+            <div class="tools-section">
+                <div class="section-header">
+                    <h2>File Information</h2>
+                    <div class="section-actions">
+                        <button class="view-all">Analyze File <i class="fas fa-search"></i></button>
+                    </div>
+                </div>
+
+                <div class="file-info-tool">
+                    <div class="file-selector">
+                        <button class="select-file-btn"><i class="fas fa-file"></i> Select File</button>
+                        <span class="selected-file">No file selected</span>
+                    </div>
+                    <div class="info-display">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">File Name:</span>
+                                <span class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">File Size:</span>
+                                <span class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">File Type:</span>
+                                <span class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Created:</span>
+                                <span class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Modified:</span>
+                                <span class="info-value">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">MD5 Hash:</span>
+                                <span class="info-value hash-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RECENT ACTIVITY -->
+            <div class="recent-section">
+                <h3><i class="fas fa-history"></i> Recent Activity</h3>
+                <div class="recent-list">
+                    <div class="recent-item">
+                        <div class="recent-icon"><i class="fas fa-check-circle" style="color: #137333;"></i></div>
+                        <div class="recent-details">
+                            <span class="recent-file">document.pdf</span>
+                            <span class="recent-action">Converted to PDF</span>
+                        </div>
+                        <span class="recent-time">2 min ago</span>
+                    </div>
+                    <div class="recent-item">
+                        <div class="recent-icon"><i class="fas fa-check-circle" style="color: #137333;"></i></div>
+                        <div class="recent-details">
+                            <span class="recent-file">images.zip</span>
+                            <span class="recent-action">Created archive</span>
+                        </div>
+                        <span class="recent-time">15 min ago</span>
+                    </div>
+                    <div class="recent-item">
+                        <div class="recent-icon"><i class="fas fa-exclamation-circle" style="color: #c5221f;"></i></div>
+                        <div class="recent-details">
+                            <span class="recent-file">large_file.xlsx</span>
+                            <span class="recent-action">Conversion failed</span>
+                        </div>
+                        <span class="recent-time">1 hour ago</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- JavaScript for Interactive Features -->
+    <script>
+        // Sidebar navigation active state
+        document.querySelectorAll('.sidebar-nav a').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.querySelectorAll('.sidebar-nav li').forEach(li => li.classList.remove('active'));
+                this.parentElement.classList.add('active');
+                
+                // Here you would load the corresponding tool
+                const toolId = this.getAttribute('href').substring(1);
+                loadTool(toolId);
+            });
+        });
+
+        // Tool card clicks
+        document.querySelectorAll('.tool-card').forEach(card => {
+            card.addEventListener('click', function() {
+                const tool = this.dataset.tool;
+                loadTool(tool);
+            });
+        });
+
+        // File drop area
+        const dropArea = document.querySelector('.file-drop-area');
+        if (dropArea) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            dropArea.addEventListener('drop', handleDrop, false);
+        }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            console.log('Files dropped:', files);
+            // Here you would process the files
+            alert(`Dropped ${files.length} file(s)`);
+        }
+
+        // Browse link
+        document.querySelector('.browse-link')?.addEventListener('click', () => {
+            // Create hidden file input
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.accept = '.pdf,.docx,.txt,.jpg,.png,.csv,.xlsx,.zip';
+            input.onchange = (e) => handleFiles(e.target.files);
+            input.click();
+        });
+
+        // Add files button for PDF merge
+        document.querySelector('.add-files-btn')?.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.accept = '.pdf';
+            input.onchange = (e) => {
+                const fileList = document.getElementById('merge-file-list');
+                fileList.innerHTML = '';
+                Array.from(e.target.files).forEach(file => {
+                    const item = document.createElement('div');
+                    item.className = 'file-item';
+                    item.innerHTML = `
+                        <i class="fas fa-file-pdf"></i>
+                        <span>${file.name}</span>
+                        <span class="file-size">${(file.size / 1024).toFixed(1)} KB</span>
+                        <i class="fas fa-times remove-file"></i>
+                    `;
+                    fileList.appendChild(item);
+                });
+            };
+            input.click();
+        });
+
+        // Browse button for file info
+        document.querySelector('.select-file-btn')?.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    document.querySelector('.selected-file').textContent = file.name;
+                    
+                    // Update info display with mock data
+                    document.querySelectorAll('.info-value')[0].textContent = file.name;
+                    document.querySelectorAll('.info-value')[1].textContent = (file.size / 1024).toFixed(2) + ' KB';
+                    document.querySelectorAll('.info-value')[2].textContent = file.type || 'Unknown';
+                    document.querySelectorAll('.info-value')[3].textContent = new Date().toLocaleDateString();
+                    document.querySelectorAll('.info-value')[4].textContent = new Date().toLocaleDateString();
+                    document.querySelectorAll('.info-value')[5].textContent = 'd41d8cd98f00b204e9800998ecf8427e';
+                }
+            };
+            input.click();
+        });
+
+        // Split PDF radio toggle
+        document.querySelectorAll('input[name="split-mode"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                document.querySelector('.pages-input').disabled = this.value !== 'custom';
+            });
+        });
+
+        // Convert button
+        document.querySelector('.convert-btn')?.addEventListener('click', () => {
+            alert('Processing conversion...\n\nIn a real implementation, this would:\n1. Upload the file\n2. Process it with Python backend\n3. Download the converted file');
+        });
+
+        // Start batch process
+        document.querySelector('.start-batch')?.addEventListener('click', () => {
+            alert('Batch processing started!\n\nThis would process all files in the selected folder according to your rules.');
+        });
+
+        // Function to load different tools
+        function loadTool(toolId) {
+            console.log('Loading tool:', toolId);
+            // Here you would dynamically load the tool interface
+            // For now, we'll just show an alert
+            alert(`Loading ${toolId} tool...\n\nThis would display the full interface for this specific tool.`);
+        }
+
+        // Initialize tooltips or other features
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Document Conversion Toolkit loaded');
+        });
+    </script>
+</body>
+</html>
