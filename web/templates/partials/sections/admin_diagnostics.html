@@ -1,0 +1,20 @@
+            <section class="online-convert-panel" id="admin-diagnostics">
+                <div class="panel-head">
+                    <h2><i class="fas fa-user-shield"></i> Admin Diagnostics</h2>
+                    <p>Check dependency issues, service status, and runtime health. Access requires an admin token.</p>
+                </div>
+
+                <div class="online-convert-grid">
+                    <div class="online-control">
+                        <label for="admin-token">Admin Token</label>
+                        <input id="admin-token" type="password" placeholder="Enter admin token" autocomplete="off" />
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <button id="admin-diagnostics-run-btn" class="action-btn primary"><i class="fas fa-stethoscope"></i> Run Diagnostics</button>
+                </div>
+
+                <div class="status-area" id="admin-diagnostics-status-area">Admin diagnostics are ready. Provide a valid admin token.</div>
+                <pre id="admin-diagnostics-output" class="status-area" style="white-space: pre-wrap; max-height: 360px; overflow: auto;"></pre>
+            </section>

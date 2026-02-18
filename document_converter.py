@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.converters.document_converters import DocumentConverter
 from src.converters.image_converters import ImageConverter
 from src.converters.audio_converters import AudioConverter
+from src.converters.archive_converters import ArchiveConverter
 from src.core.file_utils import FileUtils
 from src.core.exceptions import UnsupportedFormatError
 
@@ -21,10 +22,14 @@ class ConversionToolkit:
         self.document_converter = DocumentConverter()
         self.image_converter = ImageConverter()
         self.audio_converter = AudioConverter()
+        self.archive_converter = ArchiveConverter()
         self.file_utils = FileUtils()
 
     def convert(self, input_file, output_format, **kwargs):
         ext = Path(input_file).suffix.lower()
+        normalized_output = output_format.lower()
+        if not normalized_output.startswith('.'):
+            normalized_output = f'.{normalized_output}'
 
         document_exts = {
             '.txt', '.md', '.html', '.htm', '.doc', '.docx', '.odt', '.ott', '.rtf', '.pdf', '.xml', '.json', '.yaml',
@@ -32,13 +37,24 @@ class ConversionToolkit:
         }
         image_exts = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic'}
         audio_exts = {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}
+        archive_exts = {
+            '.zip', '.tar', '.gz', '.bz2', '.xz', '.7z',
+            '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz'
+        }
+
+        input_name = str(input_file).lower()
+        input_is_archive = any(input_name.endswith(ext_name) for ext_name in archive_exts)
+        output_is_archive = normalized_output in archive_exts
+
+        if input_is_archive or output_is_archive:
+            return self.archive_converter.convert(input_file, normalized_output, **kwargs)
 
         if ext in document_exts:
-            return self.document_converter.convert(input_file, output_format, **kwargs)
+            return self.document_converter.convert(input_file, normalized_output, **kwargs)
         if ext in image_exts:
-            return self.image_converter.convert(input_file, output_format, **kwargs)
+            return self.image_converter.convert(input_file, normalized_output, **kwargs)
         if ext in audio_exts:
-            return self.audio_converter.convert(input_file, output_format, **kwargs)
+            return self.audio_converter.convert(input_file, normalized_output, **kwargs)
 
         raise UnsupportedFormatError(f"No converter available for {ext}")
 

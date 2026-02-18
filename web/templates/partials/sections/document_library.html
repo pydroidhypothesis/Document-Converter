@@ -31,9 +31,16 @@
                 <div class="online-control">
                     <label>Current Folder Tree</label>
                     <div class="button-row" style="margin: 8px 0;">
+                        <select id="storage-root-select" style="min-width: 180px;">
+                            <option value="documents">Documents</option>
+                            <option value="data">Data</option>
+                            <option value="snapshots">Snapshots Folder</option>
+                        </select>
+                        <button id="storage-tree-refresh-btn" class="action-btn"><i class="fas fa-sync"></i> Refresh Tree</button>
                         <button id="doc-tree-up-btn" class="action-btn"><i class="fas fa-level-up-alt"></i> Up</button>
                         <div class="status-area" id="doc-tree-current-path" style="flex: 1;">documents/</div>
                     </div>
+                    <div class="status-area" id="storage-root-path" style="margin-top: 0;">Root: (loading...)</div>
                     <div class="status-area" style="max-height: 280px; overflow: auto;">
                         <div id="doc-tree-list" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace;"></div>
                     </div>

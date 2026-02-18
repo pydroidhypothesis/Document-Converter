@@ -10,8 +10,9 @@ import {
     getDocumentFormats,
     getDocumentOptions,
     getLibreOfficeFormats,
+    getStorageConfig,
+    getStorageTree,
     processPdfOnline,
-    getStoredDocumentTree,
     listStoredDocuments,
     startDocumentConversionJob,
     storeDocument,
@@ -37,6 +38,9 @@ function getElements() {
         docElapsedTime: document.getElementById('doc-elapsed-time'),
         docEtaTime: document.getElementById('doc-eta-time'),
         docStatusArea: document.getElementById('doc-status-area'),
+        docVersionIndicator: document.getElementById('doc-version-indicator'),
+        docVersionIcon: document.getElementById('doc-version-icon'),
+        docVersionText: document.getElementById('doc-version-text'),
         docPasteZone: document.getElementById('doc-paste-zone'),
         docPasteHint: document.getElementById('doc-paste-hint'),
         loFile: document.getElementById('lo-file'),
@@ -64,6 +68,9 @@ function getElements() {
         docTreeUpBtn: document.getElementById('doc-tree-up-btn'),
         docTreeCurrentPath: document.getElementById('doc-tree-current-path'),
         docTreeList: document.getElementById('doc-tree-list'),
+        storageRootSelect: document.getElementById('storage-root-select'),
+        storageTreeRefreshBtn: document.getElementById('storage-tree-refresh-btn'),
+        storageRootPath: document.getElementById('storage-root-path'),
         docLibraryStatusArea: document.getElementById('doc-library-status-area')
     };
 }
@@ -146,6 +153,37 @@ function formatSelectedFileLabel(file) {
     }
     const fileSizeMb = (file.size / (1024 * 1024)).toFixed(2);
     return `${file.name} (${fileSizeMb} MB)`;
+}
+
+function getProfileMeta(profile) {
+    const normalized = (profile || '').toLowerCase();
+    if (normalized === 'legacy') {
+        return {
+            profile: 'legacy',
+            iconClass: 'fas fa-scroll',
+            label: 'Legacy Profile (v1)',
+            shortLabel: 'LEGACY v1'
+        };
+    }
+    return {
+        profile: 'modern',
+        iconClass: 'fas fa-bolt',
+        label: 'Modern Profile (v2)',
+        shortLabel: 'MODERN v2'
+    };
+}
+
+function updateDocumentVersionIndicator(els, profile) {
+    const meta = getProfileMeta(profile);
+    if (els.docVersionIndicator) {
+        els.docVersionIndicator.dataset.profile = meta.profile;
+    }
+    if (els.docVersionIcon) {
+        els.docVersionIcon.className = meta.iconClass;
+    }
+    if (els.docVersionText) {
+        els.docVersionText.textContent = meta.label;
+    }
 }
 
 function formatHashMeter(value, width = 24) {
@@ -376,6 +414,7 @@ async function convertDocument(els, docOptions, file) {
 
     const documentType = els.docType.value || 'auto';
     const outputProfile = els.docOutputProfile.value || (docOptions.defaultProfile || 'modern');
+    const profileMeta = getProfileMeta(outputProfile);
     const debug = Boolean(els.docDebug?.checked);
     const startedAt = Date.now();
 
@@ -394,8 +433,8 @@ async function convertDocument(els, docOptions, file) {
         els.docEtaTime.textContent = '--';
     }
     setUploadProgress(els, 0);
-    setDocumentProgress(els, 0, 'Stage: upload');
-    setStatus(els.docStatusArea, 'Converting document on server...', 'ok');
+    setDocumentProgress(els, 0, `Stage: upload (${profileMeta.shortLabel})`);
+    setStatus(els.docStatusArea, `Converting document on server using ${profileMeta.shortLabel}...`, 'ok');
 
     try {
         const start = await startDocumentConversionJob(file, outputFormat, {
@@ -436,7 +475,7 @@ async function convertDocument(els, docOptions, file) {
             setDocumentProgress(
                 els,
                 progress,
-                `Stage: ${statusPayload.stage || 'processing'} (${progress}%)`
+                `Stage: ${statusPayload.stage || 'processing'} (${progress}%) - ${profileMeta.shortLabel}`
             );
             if (els.docElapsedTime) {
                 const elapsedMs = Date.now() - startedAt;
@@ -458,13 +497,13 @@ async function convertDocument(els, docOptions, file) {
             throw new Error(statusPayload.message || 'Document conversion failed.');
         }
 
-        setDocumentProgress(els, 100, 'Stage: completed (100%)');
+        setDocumentProgress(els, 100, `Stage: completed (100%) - ${profileMeta.shortLabel}`);
         if (els.docEtaTime) {
             els.docEtaTime.textContent = '0s';
         }
         const { blob, filename } = await downloadDocumentConversionJob(start.jobId);
         triggerDownload(blob, filename);
-        setStatus(els.docStatusArea, `Success: downloaded ${filename}`, 'ok');
+        setStatus(els.docStatusArea, `Success (${profileMeta.shortLabel}): downloaded ${filename}`, 'ok');
 
         if (debug && statusPayload.conversionId) {
             const debugPayload = await getDocumentDebug(statusPayload.conversionId);
@@ -631,14 +670,50 @@ async function refreshStoredDocuments(els, silent = false) {
     }
 }
 
+async function loadStorageRoots(els, state) {
+    if (!els.storageRootSelect) {
+        return;
+    }
+
+    const payload = await getStorageConfig();
+    const roots = Array.isArray(payload.roots) ? payload.roots : [];
+    const current = state.root || els.storageRootSelect.value || 'documents';
+
+    els.storageRootSelect.innerHTML = '';
+    roots.forEach((root) => {
+        const option = document.createElement('option');
+        option.value = root.key;
+        option.textContent = root.label;
+        els.storageRootSelect.appendChild(option);
+    });
+
+    if ([...els.storageRootSelect.options].some((option) => option.value === current)) {
+        els.storageRootSelect.value = current;
+    } else if (els.storageRootSelect.options.length > 0) {
+        els.storageRootSelect.selectedIndex = 0;
+    }
+
+    state.root = els.storageRootSelect.value || 'documents';
+    state.path = '';
+
+    if (els.storageRootPath) {
+        const selected = roots.find((item) => item.key === state.root);
+        els.storageRootPath.textContent = `Root: ${selected?.path || '-'}`;
+    }
+}
+
 function renderDocumentTree(els, tree, navigateTo) {
     if (!els.docTreeList) {
         return;
     }
 
     const current = tree.currentPath || '';
+    const rootKey = (tree.rootKey || 'documents').toLowerCase();
     if (els.docTreeCurrentPath) {
-        els.docTreeCurrentPath.textContent = `documents/${current ? `${current}/` : ''}`;
+        els.docTreeCurrentPath.textContent = `${rootKey}/${current ? `${current}/` : ''}`;
+    }
+    if (els.storageRootPath) {
+        els.storageRootPath.textContent = `Root: ${tree.root || '-'}`;
     }
     if (els.docTreeUpBtn) {
         els.docTreeUpBtn.disabled = tree.parentPath === null;
@@ -670,27 +745,39 @@ function renderDocumentTree(els, tree, navigateTo) {
     });
 }
 
-async function loadDocumentTree(els, path = '', silent = false) {
+async function loadDocumentTree(els, root = 'documents', path = '', silent = false) {
     try {
-        const tree = await getStoredDocumentTree(path);
+        const tree = await getStorageTree(root, path);
+        if (els.docTreeList) {
+            els.docTreeList.dataset.currentPath = tree.currentPath || '';
+            els.docTreeList.dataset.root = root;
+        }
         renderDocumentTree(els, tree, async (nextPath) => {
-            await loadDocumentTree(els, nextPath);
+            await loadDocumentTree(els, root, nextPath);
         });
 
         if (els.docTreeUpBtn) {
             els.docTreeUpBtn.onclick = () => {
-                void loadDocumentTree(els, tree.parentPath || '');
+                void loadDocumentTree(els, root, tree.parentPath || '');
             };
         }
 
         if (!silent) {
-            setStatus(els.docLibraryStatusArea, `Opened folder: documents/${tree.currentPath || ''}`, 'ok');
+            setStatus(els.docLibraryStatusArea, `Opened folder: ${root}/${tree.currentPath || ''}`, 'ok');
         }
     } catch (error) {
         if (!silent) {
             setStatus(els.docLibraryStatusArea, `Error: ${error.message}`, 'error');
         }
     }
+}
+
+function getSelectedStorageRoot(els) {
+    return (els.storageRootSelect?.value || 'documents').toLowerCase();
+}
+
+function getCurrentTreePath(els) {
+    return els.docTreeList?.dataset.currentPath || '';
 }
 
 async function storeCurrentDocument(els) {
@@ -704,7 +791,7 @@ async function storeCurrentDocument(els) {
         await storeDocument(file, (els.storeDocName.value || '').trim());
         els.storeDocFile.value = '';
         await refreshStoredDocuments(els, true);
-        await loadDocumentTree(els, '', true);
+        await loadDocumentTree(els, getSelectedStorageRoot(els), getCurrentTreePath(els), true);
         setStatus(els.docLibraryStatusArea, 'Document stored for future users.', 'ok');
     } catch (error) {
         setStatus(els.docLibraryStatusArea, `Error: ${error.message}`, 'error');
@@ -737,7 +824,7 @@ async function deleteSelectedDocument(els) {
     try {
         await deleteStoredDocument(id);
         await refreshStoredDocuments(els, true);
-        await loadDocumentTree(els, '', true);
+        await loadDocumentTree(els, getSelectedStorageRoot(els), getCurrentTreePath(els), true);
         setStatus(els.docLibraryStatusArea, 'Stored document deleted.', 'ok');
     } catch (error) {
         setStatus(els.docLibraryStatusArea, `Error: ${error.message}`, 'error');
@@ -765,6 +852,10 @@ export function initUI() {
         outputsByTypeAndProfile: {}
     };
     let selectedDocumentFile = null;
+    const storageBrowserState = {
+        root: 'documents',
+        path: ''
+    };
 
     const updateSelectedDocument = (file, source = 'picker') => {
         selectedDocumentFile = file || null;
@@ -876,11 +967,26 @@ export function initUI() {
     els.deleteDocBtn.addEventListener('click', () => {
         void deleteSelectedDocument(els);
     });
+    if (els.storageRootSelect) {
+        els.storageRootSelect.addEventListener('change', () => {
+            storageBrowserState.root = getSelectedStorageRoot(els);
+            storageBrowserState.path = '';
+            void loadDocumentTree(els, storageBrowserState.root, storageBrowserState.path);
+        });
+    }
+    if (els.storageTreeRefreshBtn) {
+        els.storageTreeRefreshBtn.addEventListener('click', () => {
+            storageBrowserState.root = getSelectedStorageRoot(els);
+            storageBrowserState.path = getCurrentTreePath(els);
+            void loadDocumentTree(els, storageBrowserState.root, storageBrowserState.path);
+        });
+    }
     els.docType.addEventListener('change', () => {
         refreshOutputFormats(els, docOptions);
     });
 
     els.docOutputProfile.addEventListener('change', () => {
+        updateDocumentVersionIndicator(els, els.docOutputProfile.value);
         refreshOutputFormats(els, docOptions);
     });
 
@@ -893,6 +999,7 @@ export function initUI() {
     }
 
     setStatus(els.docStatusArea, 'Ready. Start server and convert a document in browser.', 'ok');
+    updateDocumentVersionIndicator(els, els.docOutputProfile.value || 'modern');
     setDocumentProgress(els, 0, 'Stage: idle');
     setUploadProgress(els, 0);
     updateSelectedDocument(null);
@@ -916,6 +1023,7 @@ export function initUI() {
     void loadDocumentControls(els)
         .then((options) => {
             docOptions = options;
+            updateDocumentVersionIndicator(els, els.docOutputProfile.value || options.defaultProfile || 'modern');
             setStatus(els.docStatusArea, 'Ready. Select type/profile and convert your document.', 'ok');
         })
         .catch((error) => {
@@ -930,7 +1038,15 @@ export function initUI() {
             setStatus(els.loStatusArea, `Warning: ${error.message}`, 'error');
         });
     void refreshStoredDocuments(els, true);
-    void loadDocumentTree(els, '', true);
+    void loadStorageRoots(els, storageBrowserState)
+        .then(() => {
+            storageBrowserState.root = getSelectedStorageRoot(els);
+            storageBrowserState.path = '';
+            return loadDocumentTree(els, storageBrowserState.root, storageBrowserState.path, true);
+        })
+        .catch((_error) => {
+            void loadDocumentTree(els, 'documents', '', true);
+        });
 
     initNavigation();
 }

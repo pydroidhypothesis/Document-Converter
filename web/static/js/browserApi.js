@@ -88,6 +88,34 @@ export async function getStoredDocumentTree(path = '') {
     return response.json();
 }
 
+export async function getStorageConfig() {
+    const response = await fetch('/api/storage/config');
+    if (!response.ok) {
+        throw new Error('Failed to load storage configuration.');
+    }
+    return response.json();
+}
+
+export async function getStorageTree(root = 'documents', path = '') {
+    const query = new URLSearchParams();
+    query.set('root', root);
+    if (path) {
+        query.set('path', path);
+    }
+
+    const response = await fetch(`/api/storage/tree?${query.toString()}`);
+    if (!response.ok) {
+        let body = null;
+        try {
+            body = await response.json();
+        } catch (_error) {
+            body = null;
+        }
+        throw new Error(getErrorMessage(body, 'Failed to load storage tree.'));
+    }
+    return response.json();
+}
+
 export async function storeDocument(file, name = '') {
     const formData = new FormData();
     formData.append('file', file);

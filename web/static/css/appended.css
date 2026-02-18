@@ -102,6 +102,32 @@
     text-align: center;
 }
 
+.doc-version-badge {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1e40af;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.doc-version-badge[data-profile='legacy'] {
+    border-color: #fde68a;
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.doc-version-badge[data-profile='modern'] {
+    border-color: #86efac;
+    background: #f0fdf4;
+    color: #166534;
+}
+
 .panel-head {
     margin-bottom: 18px;
 }

@@ -4,10 +4,15 @@
 import csv
 import io
 import json
+import os
 import tempfile
 import uuid
 import time
 import threading
+import shutil
+import secrets
+import importlib
+import importlib.metadata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +29,8 @@ WEB_DIR = BASE_DIR / "web"
 WEB_TEMPLATES_DIR = WEB_DIR / "templates"
 WEB_STATIC_DIR = WEB_DIR / "static"
 STORAGE_CONFIG_FILE = BASE_DIR / "config" / "storage_config.json"
+ADMIN_CONFIG_FILE = BASE_DIR / "config" / "admin_config.json"
+APP_STARTED_AT = datetime.now(timezone.utc)
 
 
 def _resolve_path(path_str: str, default: Path) -> Path:
@@ -38,7 +45,8 @@ def _load_storage_config():
         "data_dir": "data",
         "snapshots_file": "data/snapshots.json",
         "documents_dir": "data/documents",
-        "documents_index_file": "data/documents.json"
+        "documents_index_file": "data/documents.json",
+        "analytics_file": "data/analytics_events.csv"
     }
     if not STORAGE_CONFIG_FILE.exists():
         return defaults
@@ -63,11 +71,34 @@ def _load_storage_config():
     return merged
 
 
+def _load_admin_token():
+    env_token = (os.environ.get("DOC_CONVERT_ADMIN_TOKEN") or "").strip()
+    if env_token:
+        return env_token
+
+    if not ADMIN_CONFIG_FILE.exists():
+        return ""
+
+    try:
+        payload = json.loads(ADMIN_CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+
+    if not isinstance(payload, dict):
+        return ""
+
+    token = payload.get("admin_token") or payload.get("token") or ""
+    return token.strip() if isinstance(token, str) else ""
+
+
 _storage = _load_storage_config()
+ADMIN_TOKEN = _load_admin_token()
 DATA_DIR = _resolve_path(_storage["data_dir"], BASE_DIR / "data")
 DATA_STORE_FILE = _resolve_path(_storage["snapshots_file"], DATA_DIR / "snapshots.json")
 DOCUMENT_STORE_DIR = _resolve_path(_storage["documents_dir"], DATA_DIR / "documents")
 DOCUMENT_STORE_INDEX = _resolve_path(_storage["documents_index_file"], DATA_DIR / "documents.json")
+ANALYTICS_STORE_FILE = _resolve_path(_storage["analytics_file"], DATA_DIR / "analytics_events.csv")
+ANALYTICS_LOCK = threading.Lock()
 DOCUMENT_TYPE_INPUTS = {
     "text": {".txt", ".rtf", ".doc", ".docx", ".odt", ".ott", ".sxw", ".html", ".htm", ".xml", ".epub", ".fodt"},
     "spreadsheet": {".xls", ".xlsx", ".ods", ".ots", ".csv", ".fods"},
@@ -341,54 +372,45 @@ def list_stored_documents():
 @app.get("/api/document/store/tree")
 def get_stored_document_tree():
     DOCUMENT_STORE_DIR.mkdir(parents=True, exist_ok=True)
-    root = DOCUMENT_STORE_DIR.resolve()
-    requested = (request.args.get("path") or "").strip()
+    payload = _build_storage_tree(DOCUMENT_STORE_DIR.resolve(), request.args.get("path") or "")
+    if payload.get("error"):
+        return jsonify({"message": payload["error"]}), payload.get("status", 400)
+    return jsonify(payload)
 
-    target = (root / requested).resolve() if requested else root
-    if target != root and root not in target.parents:
-        return jsonify({"message": "Invalid path"}), 400
-    if not target.exists() or not target.is_dir():
-        return jsonify({"message": "Folder not found"}), 404
 
-    current_rel = "" if target == root else str(target.relative_to(root))
-    if target == root:
-        parent_rel = None
-    else:
-        parent = target.parent
-        parent_rel = "" if parent == root else str(parent.relative_to(root))
-
-    entries = []
-    children = sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
-    for child in children:
-        try:
-            stats = child.stat()
-        except OSError:
-            continue
-
-        is_dir = child.is_dir()
-        rel = str(child.relative_to(root))
-        folder_items = None
-        if is_dir:
-            try:
-                folder_items = sum(1 for _ in child.iterdir())
-            except OSError:
-                folder_items = 0
-        entry = {
-            "name": child.name,
-            "path": rel,
-            "type": "folder" if is_dir else "file",
-            "sizeBytes": None if is_dir else int(stats.st_size),
-            "sizeReadable": f"{folder_items} items" if is_dir else _bytes_to_readable(int(stats.st_size)),
-            "modifiedAt": datetime.fromtimestamp(stats.st_mtime, timezone.utc).isoformat()
-        }
-        entries.append(entry)
-
+@app.get("/api/storage/config")
+def get_storage_config():
+    roots = _get_storage_roots()
     return jsonify({
-        "root": str(root),
-        "currentPath": current_rel,
-        "parentPath": parent_rel,
-        "entries": entries
+        "storage": {
+            "dataDir": str(DATA_DIR.resolve()),
+            "snapshotsFile": str(DATA_STORE_FILE.resolve()),
+            "documentsDir": str(DOCUMENT_STORE_DIR.resolve()),
+            "documentsIndexFile": str(DOCUMENT_STORE_INDEX.resolve())
+        },
+        "roots": [
+            {"key": "documents", "label": "Documents", "path": str(roots["documents"]), "exists": roots["documents"].exists()},
+            {"key": "data", "label": "Data", "path": str(roots["data"]), "exists": roots["data"].exists()},
+            {"key": "snapshots", "label": "Snapshots Folder", "path": str(roots["snapshots"]), "exists": roots["snapshots"].exists()}
+        ]
     })
+
+
+@app.get("/api/storage/tree")
+def get_storage_tree():
+    roots = _get_storage_roots()
+    root_key = (request.args.get("root") or "documents").strip().lower()
+    if root_key not in roots:
+        return jsonify({"message": "Invalid storage root"}), 400
+
+    root = roots[root_key]
+    root.mkdir(parents=True, exist_ok=True)
+    payload = _build_storage_tree(root, request.args.get("path") or "")
+    if payload.get("error"):
+        return jsonify({"message": payload["error"]}), payload.get("status", 400)
+
+    payload["rootKey"] = root_key
+    return jsonify(payload)
 
 
 @app.post("/api/document/store")
@@ -945,6 +967,229 @@ def _bytes_to_readable(num_bytes: int) -> str:
             return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} {unit}"
         size /= 1024.0
     return f"{size:.1f} PB"
+
+
+def _require_admin():
+    if not ADMIN_TOKEN:
+        return jsonify({"message": "Admin token is not configured on server."}), 503
+
+    provided = (request.headers.get("X-Admin-Token") or "").strip()
+    if not provided or not secrets.compare_digest(provided, ADMIN_TOKEN):
+        return jsonify({"message": "Admin access denied."}), 403
+    return None
+
+
+def _check_dependency(module_name: str, package_name: str):
+    try:
+        importlib.import_module(module_name)
+        try:
+            version = importlib.metadata.version(package_name)
+        except Exception:
+            version = "unknown"
+        return {
+            "name": package_name,
+            "module": module_name,
+            "installed": True,
+            "version": version
+        }
+    except Exception as exc:
+        return {
+            "name": package_name,
+            "module": module_name,
+            "installed": False,
+            "version": None,
+            "error": str(exc)
+        }
+
+
+def _job_stats():
+    with CONVERSION_JOBS_LOCK:
+        jobs = list(CONVERSION_JOBS.values())
+    counts = {"queued": 0, "running": 0, "completed": 0, "failed": 0, "other": 0}
+    for job in jobs:
+        status = (job.get("status") or "").lower()
+        if status in counts:
+            counts[status] += 1
+        else:
+            counts["other"] += 1
+    counts["total"] = len(jobs)
+    return counts
+
+
+def _request_client_ip():
+    forwarded = (request.headers.get("X-Forwarded-For") or "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return (request.remote_addr or "").strip()
+
+
+def _ensure_analytics_store():
+    headers = [
+        "timestamp",
+        "eventType",
+        "ip",
+        "userAgent",
+        "source",
+        "documentType",
+        "inputFormat",
+        "outputFormat",
+        "outputProfile",
+        "success",
+        "durationMs",
+        "notes"
+    ]
+    try:
+        ANALYTICS_STORE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if not ANALYTICS_STORE_FILE.exists():
+            with ANALYTICS_STORE_FILE.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=headers)
+                writer.writeheader()
+    except Exception:
+        return
+
+
+def _track_analytics_event(event_type: str, **fields):
+    _ensure_analytics_store()
+    row = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "eventType": event_type,
+        "ip": fields.get("ip", ""),
+        "userAgent": fields.get("userAgent", ""),
+        "source": fields.get("source", ""),
+        "documentType": fields.get("documentType", ""),
+        "inputFormat": fields.get("inputFormat", ""),
+        "outputFormat": fields.get("outputFormat", ""),
+        "outputProfile": fields.get("outputProfile", ""),
+        "success": str(bool(fields.get("success", False))).lower(),
+        "durationMs": str(fields.get("durationMs", "")),
+        "notes": fields.get("notes", "")
+    }
+
+    try:
+        with ANALYTICS_LOCK:
+            with ANALYTICS_STORE_FILE.open("a", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(row.keys()))
+                writer.writerow(row)
+    except Exception:
+        return
+
+
+def _load_analytics_rows():
+    _ensure_analytics_store()
+    if not ANALYTICS_STORE_FILE.exists():
+        return []
+    try:
+        with ANALYTICS_STORE_FILE.open("r", encoding="utf-8", newline="") as handle:
+            return list(csv.DictReader(handle))
+    except Exception:
+        return []
+
+
+def _summarize_analytics(rows):
+    visits = 0
+    conversions = 0
+    success_count = 0
+    by_doc_type = {}
+    by_output_format = {}
+    by_output_profile = {}
+    by_source = {}
+
+    for row in rows:
+        event_type = (row.get("eventType") or "").strip()
+        if event_type == "visit":
+            visits += 1
+            continue
+
+        if event_type.startswith("document_conversion"):
+            conversions += 1
+            source = (row.get("source") or "").strip() or "unknown"
+            by_source[source] = by_source.get(source, 0) + 1
+
+            if (row.get("success") or "").strip().lower() == "true":
+                success_count += 1
+
+            doc_type = (row.get("documentType") or "").strip() or "unknown"
+            by_doc_type[doc_type] = by_doc_type.get(doc_type, 0) + 1
+
+            output_format = (row.get("outputFormat") or "").strip() or "unknown"
+            by_output_format[output_format] = by_output_format.get(output_format, 0) + 1
+
+            profile = (row.get("outputProfile") or "").strip() or "unknown"
+            by_output_profile[profile] = by_output_profile.get(profile, 0) + 1
+
+    return {
+        "totals": {
+            "visits": visits,
+            "documentConversions": conversions,
+            "successfulDocumentConversions": success_count
+        },
+        "breakdown": {
+            "byDocumentType": by_doc_type,
+            "byOutputFormat": by_output_format,
+            "byOutputProfile": by_output_profile,
+            "bySource": by_source
+        }
+    }
+
+
+def _get_storage_roots():
+    roots = {
+        "documents": DOCUMENT_STORE_DIR.resolve(),
+        "data": DATA_DIR.resolve(),
+        "snapshots": DATA_STORE_FILE.resolve().parent
+    }
+    return roots
+
+
+def _build_storage_tree(root: Path, requested: str):
+    root = root.resolve()
+    requested = (requested or "").strip()
+
+    target = (root / requested).resolve() if requested else root
+    if target != root and root not in target.parents:
+        return {"error": "Invalid path", "status": 400}
+    if not target.exists() or not target.is_dir():
+        return {"error": "Folder not found", "status": 404}
+
+    current_rel = "" if target == root else str(target.relative_to(root))
+    if target == root:
+        parent_rel = None
+    else:
+        parent = target.parent
+        parent_rel = "" if parent == root else str(parent.relative_to(root))
+
+    entries = []
+    children = sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
+    for child in children:
+        try:
+            stats = child.stat()
+        except OSError:
+            continue
+
+        is_dir = child.is_dir()
+        rel = str(child.relative_to(root))
+        folder_items = None
+        if is_dir:
+            try:
+                folder_items = sum(1 for _ in child.iterdir())
+            except OSError:
+                folder_items = 0
+        entry = {
+            "name": child.name,
+            "path": rel,
+            "type": "folder" if is_dir else "file",
+            "sizeBytes": None if is_dir else int(stats.st_size),
+            "sizeReadable": f"{folder_items} items" if is_dir else _bytes_to_readable(int(stats.st_size)),
+            "modifiedAt": datetime.fromtimestamp(stats.st_mtime, timezone.utc).isoformat()
+        }
+        entries.append(entry)
+
+    return {
+        "root": str(root),
+        "currentPath": current_rel,
+        "parentPath": parent_rel,
+        "entries": entries
+    }
 
 
 def _snapshot_summary(snapshot):

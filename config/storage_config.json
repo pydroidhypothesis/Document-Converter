@@ -1,6 +1,6 @@
 {
   "storage": {
-    "data_dir": "data",
+    "data_dir": "/",
     "snapshots_file": "data/snapshots.json",
     "documents_dir": "data/documents",
     "documents_index_file": "data/documents.json"
