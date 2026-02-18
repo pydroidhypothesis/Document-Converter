@@ -10,6 +10,7 @@ import {
     getDocumentFormats,
     getDocumentOptions,
     getLibreOfficeFormats,
+    processPdfOnline,
     getStoredDocumentTree,
     listStoredDocuments,
     startDocumentConversionJob,
@@ -29,11 +30,15 @@ function getElements() {
         docProgressText: document.getElementById('doc-progress-text'),
         docUploadBar: document.getElementById('doc-upload-bar'),
         docProgressBar: document.getElementById('doc-progress-bar'),
+        docUploadTextMeter: document.getElementById('doc-upload-textmeter'),
+        docConversionTextMeter: document.getElementById('doc-conversion-textmeter'),
         docSelectedFile: document.getElementById('doc-selected-file'),
         docUploadSpeed: document.getElementById('doc-upload-speed'),
         docElapsedTime: document.getElementById('doc-elapsed-time'),
         docEtaTime: document.getElementById('doc-eta-time'),
         docStatusArea: document.getElementById('doc-status-area'),
+        docPasteZone: document.getElementById('doc-paste-zone'),
+        docPasteHint: document.getElementById('doc-paste-hint'),
         loFile: document.getElementById('lo-file'),
         loOutputFormat: document.getElementById('lo-output-format'),
         loConvertBtn: document.getElementById('lo-convert-btn'),
@@ -43,6 +48,10 @@ function getElements() {
         audioBitrate: document.getElementById('audio-bitrate'),
         audioConvertBtn: document.getElementById('audio-convert-btn'),
         audioStatusArea: document.getElementById('audio-status-area'),
+        pdfFile: document.getElementById('pdf-file'),
+        pdfMode: document.getElementById('pdf-mode'),
+        pdfProcessBtn: document.getElementById('pdf-process-btn'),
+        pdfStatusArea: document.getElementById('pdf-status-area'),
         calcRoot: document.getElementById('calc-root'),
         calcStatusArea: document.getElementById('calc-status-area'),
         storeDocFile: document.getElementById('store-doc-file'),
@@ -87,6 +96,9 @@ function setDocumentProgress(els, value, text = '') {
     if (els.docProgressBar) {
         els.docProgressBar.style.width = `${safeValue}%`;
     }
+    if (els.docConversionTextMeter) {
+        els.docConversionTextMeter.textContent = formatHashMeter(safeValue);
+    }
     if (els.docProgressText) {
         els.docProgressText.textContent = text || `Progress: ${safeValue}%`;
     }
@@ -96,6 +108,9 @@ function setUploadProgress(els, value) {
     const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
     if (els.docUploadBar) {
         els.docUploadBar.style.width = `${safeValue}%`;
+    }
+    if (els.docUploadTextMeter) {
+        els.docUploadTextMeter.textContent = formatHashMeter(safeValue);
     }
 }
 
@@ -123,6 +138,21 @@ function formatDurationMs(ms) {
         return `${minutes}m ${seconds}s`;
     }
     return `${seconds}s`;
+}
+
+function formatSelectedFileLabel(file) {
+    if (!file) {
+        return 'No file selected';
+    }
+    const fileSizeMb = (file.size / (1024 * 1024)).toFixed(2);
+    return `${file.name} (${fileSizeMb} MB)`;
+}
+
+function formatHashMeter(value, width = 24) {
+    const percent = Math.max(0, Math.min(100, Number(value) || 0));
+    const filled = Math.round((percent / 100) * width);
+    const meter = `${'#'.repeat(filled)}${'.'.repeat(width - filled)}`;
+    return `[${meter}] ${Math.round(percent)}%`;
 }
 
 function sleep(ms) {
@@ -332,10 +362,9 @@ async function loadDocumentControls(els) {
     return options;
 }
 
-async function convertDocument(els, docOptions) {
-    const file = els.docFile.files?.[0];
+async function convertDocument(els, docOptions, file) {
     if (!file) {
-        setStatus(els.docStatusArea, 'Select a source file before converting.', 'error');
+        setStatus(els.docStatusArea, 'Select, paste, or drop a source file before converting.', 'error');
         return;
     }
 
@@ -353,8 +382,7 @@ async function convertDocument(els, docOptions) {
     els.docConvertBtn.disabled = true;
     els.docConvertBtn.classList.add('loading');
     if (els.docSelectedFile) {
-        const fileSizeMb = (file.size / (1024 * 1024)).toFixed(2);
-        els.docSelectedFile.textContent = `${file.name} (${fileSizeMb} MB)`;
+        els.docSelectedFile.textContent = formatSelectedFileLabel(file);
     }
     if (els.docUploadSpeed) {
         els.docUploadSpeed.textContent = '0 KB/s';
@@ -536,6 +564,35 @@ async function convertAudio(els) {
     }
 }
 
+async function processPdf(els) {
+    const file = els.pdfFile.files?.[0];
+    if (!file) {
+        setStatus(els.pdfStatusArea, 'Select a PDF file first.', 'error');
+        return;
+    }
+
+    const mode = (els.pdfMode.value || 'compress').toLowerCase();
+    if (!['compress', 'decompress'].includes(mode)) {
+        setStatus(els.pdfStatusArea, 'Choose a valid PDF operation.', 'error');
+        return;
+    }
+
+    els.pdfProcessBtn.disabled = true;
+    els.pdfProcessBtn.classList.add('loading');
+    setStatus(els.pdfStatusArea, `${mode === 'compress' ? 'Compressing' : 'Decompressing'} PDF on server...`, 'ok');
+
+    try {
+        const { blob, filename } = await processPdfOnline(file, mode);
+        triggerDownload(blob, filename);
+        setStatus(els.pdfStatusArea, `Success: downloaded ${filename}`, 'ok');
+    } catch (error) {
+        setStatus(els.pdfStatusArea, `Error: ${error.message}`, 'error');
+    } finally {
+        els.pdfProcessBtn.disabled = false;
+        els.pdfProcessBtn.classList.remove('loading');
+    }
+}
+
 function renderStoredDocuments(els, items) {
     const selected = els.storedDocList.value;
     els.storedDocList.innerHTML = '';
@@ -687,6 +744,19 @@ async function deleteSelectedDocument(els) {
     }
 }
 
+function extractFileFromClipboardEvent(event) {
+    const items = event.clipboardData?.items || [];
+    for (const item of items) {
+        if (item.kind === 'file') {
+            const file = item.getAsFile();
+            if (file) {
+                return file;
+            }
+        }
+    }
+    return null;
+}
+
 export function initUI() {
     const els = getElements();
     let docOptions = {
@@ -694,28 +764,105 @@ export function initUI() {
         defaultProfile: 'modern',
         outputsByTypeAndProfile: {}
     };
+    let selectedDocumentFile = null;
+
+    const updateSelectedDocument = (file, source = 'picker') => {
+        selectedDocumentFile = file || null;
+
+        if (els.docSelectedFile) {
+            els.docSelectedFile.textContent = formatSelectedFileLabel(selectedDocumentFile);
+        }
+        if (els.docPasteZone) {
+            els.docPasteZone.classList.toggle('is-has-file', Boolean(selectedDocumentFile));
+            els.docPasteZone.classList.remove('is-active');
+        }
+        if (els.docPasteHint) {
+            if (!selectedDocumentFile) {
+                els.docPasteHint.textContent = 'Press Ctrl+V after copying a document file, or drag and drop it here.';
+            } else if (source === 'paste') {
+                els.docPasteHint.textContent = `Pasted file: ${selectedDocumentFile.name}`;
+            } else if (source === 'drop') {
+                els.docPasteHint.textContent = `Dropped file: ${selectedDocumentFile.name}`;
+            } else {
+                els.docPasteHint.textContent = `Selected file: ${selectedDocumentFile.name}`;
+            }
+        }
+    };
+
+    const getCurrentDocumentFile = () => selectedDocumentFile || els.docFile.files?.[0] || null;
+
+    const isDocumentConverterVisible = () => {
+        const section = document.getElementById('document-converter');
+        return Boolean(section && section.style.display !== 'none');
+    };
 
     els.docConvertBtn.addEventListener('click', () => {
-        void convertDocument(els, docOptions);
+        void convertDocument(els, docOptions, getCurrentDocumentFile());
     });
     els.docFile.addEventListener('change', () => {
-        const selected = els.docFile.files?.[0];
-        if (!selected) {
-            if (els.docSelectedFile) {
-                els.docSelectedFile.textContent = 'No file selected';
+        updateSelectedDocument(els.docFile.files?.[0] || null, 'picker');
+    });
+
+    if (els.docPasteZone) {
+        els.docPasteZone.addEventListener('click', () => {
+            els.docFile.click();
+        });
+        els.docPasteZone.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                els.docFile.click();
             }
+        });
+        ['dragenter', 'dragover'].forEach((eventName) => {
+            els.docPasteZone.addEventListener(eventName, (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                els.docPasteZone.classList.add('is-active');
+            });
+        });
+        ['dragleave', 'dragend'].forEach((eventName) => {
+            els.docPasteZone.addEventListener(eventName, (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                els.docPasteZone.classList.remove('is-active');
+            });
+        });
+        els.docPasteZone.addEventListener('drop', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const droppedFile = event.dataTransfer?.files?.[0] || null;
+            updateSelectedDocument(droppedFile, droppedFile ? 'drop' : 'picker');
+        });
+        els.docPasteZone.addEventListener('paste', (event) => {
+            const pastedFile = extractFileFromClipboardEvent(event);
+            if (!pastedFile) {
+                return;
+            }
+            event.preventDefault();
+            updateSelectedDocument(pastedFile, 'paste');
+        });
+    }
+
+    window.addEventListener('paste', (event) => {
+        if (!isDocumentConverterVisible()) {
             return;
         }
-        if (els.docSelectedFile) {
-            const fileSizeMb = (selected.size / (1024 * 1024)).toFixed(2);
-            els.docSelectedFile.textContent = `${selected.name} (${fileSizeMb} MB)`;
+        const pastedFile = extractFileFromClipboardEvent(event);
+        if (!pastedFile) {
+            return;
         }
+        event.preventDefault();
+        updateSelectedDocument(pastedFile, 'paste');
     });
+
     els.loConvertBtn.addEventListener('click', () => {
         void convertLibreOffice(els);
     });
     els.audioConvertBtn.addEventListener('click', () => {
         void convertAudio(els);
+    });
+    els.pdfProcessBtn.addEventListener('click', () => {
+        void processPdf(els);
     });
     els.storeDocBtn.addEventListener('click', () => {
         void storeCurrentDocument(els);
@@ -748,9 +895,7 @@ export function initUI() {
     setStatus(els.docStatusArea, 'Ready. Start server and convert a document in browser.', 'ok');
     setDocumentProgress(els, 0, 'Stage: idle');
     setUploadProgress(els, 0);
-    if (els.docSelectedFile) {
-        els.docSelectedFile.textContent = 'No file selected';
-    }
+    updateSelectedDocument(null);
     if (els.docUploadSpeed) {
         els.docUploadSpeed.textContent = '0 KB/s';
     }
@@ -762,6 +907,7 @@ export function initUI() {
     }
     setStatus(els.loStatusArea, 'Ready. Upload a LibreOffice document to convert.', 'ok');
     setStatus(els.audioStatusArea, 'Ready. Upload audio to convert.', 'ok');
+    setStatus(els.pdfStatusArea, 'Ready. Upload a PDF file and run compression or decompression.', 'ok');
     setStatus(els.calcStatusArea, 'Ready. Enter values and run a calculation.', 'ok');
     initCalculator(els);
     setStatus(els.docLibraryStatusArea, 'Ready. Store documents for future users.', 'ok');

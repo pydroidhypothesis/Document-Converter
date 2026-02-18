@@ -1,0 +1,34 @@
+            <section class="online-convert-panel" id="audio-converter">
+                <div class="panel-head">
+                    <h2><i class="fas fa-music"></i> Audio Converter</h2>
+                    <p>Upload an audio file, choose output format, and download the converted audio.</p>
+                </div>
+
+                <div class="online-convert-grid">
+                    <div class="online-control">
+                        <label for="audio-file">Audio File</label>
+                        <input id="audio-file" type="file" />
+                    </div>
+                    <div class="online-control">
+                        <label for="audio-output-format">Output Format</label>
+                        <select id="audio-output-format">
+                            <option value="mp3">MP3</option>
+                            <option value="wav">WAV</option>
+                            <option value="ogg">OGG</option>
+                            <option value="flac">FLAC</option>
+                            <option value="aac">AAC</option>
+                            <option value="m4a">M4A</option>
+                        </select>
+                    </div>
+                    <div class="online-control">
+                        <label for="audio-bitrate">Bitrate (optional)</label>
+                        <input id="audio-bitrate" type="text" placeholder="e.g. 192k" />
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <button id="audio-convert-btn" class="action-btn primary"><i class="fas fa-play"></i> Convert Audio</button>
+                </div>
+
+                <div class="status-area" id="audio-status-area">Ready. Upload audio to convert.</div>
+            </section>

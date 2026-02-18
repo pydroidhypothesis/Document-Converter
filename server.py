@@ -11,13 +11,18 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_file, send_from_directory, after_this_request
+from flask import Flask, jsonify, request, send_file, send_from_directory, after_this_request, render_template
 from werkzeug.utils import secure_filename
 
 from document_converter import ConversionToolkit
+from PyPDF2 import PdfReader, PdfWriter
+from PyPDF2.generic import DecodedStreamObject, NameObject
 
 
 BASE_DIR = Path(__file__).resolve().parent
+WEB_DIR = BASE_DIR / "web"
+WEB_TEMPLATES_DIR = WEB_DIR / "templates"
+WEB_STATIC_DIR = WEB_DIR / "static"
 STORAGE_CONFIG_FILE = BASE_DIR / "config" / "storage_config.json"
 
 
@@ -91,13 +96,18 @@ DEBUG_HISTORY_LIMIT = 100
 DEBUG_HISTORY = []
 CONVERSION_JOBS = {}
 CONVERSION_JOBS_LOCK = threading.Lock()
-app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
+app = Flask(
+    __name__,
+    template_folder=str(WEB_TEMPLATES_DIR),
+    static_folder=str(WEB_STATIC_DIR),
+    static_url_path="/static"
+)
 toolkit = ConversionToolkit()
 
 
 @app.get("/")
 def index():
-    return send_from_directory(BASE_DIR, "index.html")
+    return render_template("index.html")
 
 
 @app.get("/health")
@@ -326,6 +336,59 @@ def list_stored_documents():
     items = _load_stored_documents()
     items.sort(key=lambda item: item.get("createdAt", ""), reverse=True)
     return jsonify({"items": items})
+
+
+@app.get("/api/document/store/tree")
+def get_stored_document_tree():
+    DOCUMENT_STORE_DIR.mkdir(parents=True, exist_ok=True)
+    root = DOCUMENT_STORE_DIR.resolve()
+    requested = (request.args.get("path") or "").strip()
+
+    target = (root / requested).resolve() if requested else root
+    if target != root and root not in target.parents:
+        return jsonify({"message": "Invalid path"}), 400
+    if not target.exists() or not target.is_dir():
+        return jsonify({"message": "Folder not found"}), 404
+
+    current_rel = "" if target == root else str(target.relative_to(root))
+    if target == root:
+        parent_rel = None
+    else:
+        parent = target.parent
+        parent_rel = "" if parent == root else str(parent.relative_to(root))
+
+    entries = []
+    children = sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
+    for child in children:
+        try:
+            stats = child.stat()
+        except OSError:
+            continue
+
+        is_dir = child.is_dir()
+        rel = str(child.relative_to(root))
+        folder_items = None
+        if is_dir:
+            try:
+                folder_items = sum(1 for _ in child.iterdir())
+            except OSError:
+                folder_items = 0
+        entry = {
+            "name": child.name,
+            "path": rel,
+            "type": "folder" if is_dir else "file",
+            "sizeBytes": None if is_dir else int(stats.st_size),
+            "sizeReadable": f"{folder_items} items" if is_dir else _bytes_to_readable(int(stats.st_size)),
+            "modifiedAt": datetime.fromtimestamp(stats.st_mtime, timezone.utc).isoformat()
+        }
+        entries.append(entry)
+
+    return jsonify({
+        "root": str(root),
+        "currentPath": current_rel,
+        "parentPath": parent_rel,
+        "entries": entries
+    })
 
 
 @app.post("/api/document/store")
@@ -695,6 +758,92 @@ def convert_audio():
     )
 
 
+@app.post("/api/pdf/process")
+def process_pdf():
+    if "file" not in request.files:
+        return jsonify({"success": False, "message": "Missing uploaded PDF file"}), 400
+
+    source = request.files["file"]
+    mode = (request.form.get("mode") or "compress").strip().lower()
+    if mode not in {"compress", "decompress"}:
+        return jsonify({"success": False, "message": "Invalid mode. Use compress or decompress."}), 400
+
+    if source.filename is None or source.filename.strip() == "":
+        return jsonify({"success": False, "message": "Invalid source filename"}), 400
+
+    safe_name = secure_filename(source.filename)
+    if not safe_name:
+        safe_name = "document.pdf"
+    if not safe_name.lower().endswith(".pdf"):
+        return jsonify({"success": False, "message": "Only PDF files are supported for this operation."}), 400
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="pdfprocess_"))
+    input_path = temp_dir / safe_name
+    output_suffix = "_compressed.pdf" if mode == "compress" else "_decompressed.pdf"
+    output_path = temp_dir / f"{Path(safe_name).stem}{output_suffix}"
+    source.save(input_path)
+
+    try:
+        reader = PdfReader(str(input_path))
+        writer = PdfWriter()
+
+        for page in reader.pages:
+            page_ref = page
+            if mode == "compress":
+                try:
+                    page_ref.compress_content_streams()
+                except Exception:
+                    pass
+            else:
+                try:
+                    contents = page_ref.get_contents()
+                    if contents:
+                        decoded = DecodedStreamObject()
+                        decoded.set_data(contents.get_data())
+                        page_ref[NameObject("/Contents")] = decoded
+                except Exception:
+                    pass
+
+            writer.add_page(page_ref)
+
+        if reader.metadata:
+            writer.add_metadata({})  # Remove metadata for smaller, cleaner output.
+
+        with output_path.open("wb") as handle:
+            writer.write(handle)
+    except Exception as exc:
+        for path in temp_dir.glob("*"):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        try:
+            temp_dir.rmdir()
+        except OSError:
+            pass
+        return jsonify({"success": False, "message": f"PDF {mode} failed: {exc}"}), 400
+
+    @after_this_request
+    def cleanup(_response):
+        for path in temp_dir.glob("*"):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        try:
+            temp_dir.rmdir()
+        except OSError:
+            pass
+        return _response
+
+    return send_file(
+        str(output_path),
+        as_attachment=True,
+        download_name=output_path.name,
+        mimetype="application/pdf"
+    )
+
+
 def _parse_data(text: str, data_format: str):
     clean = (text or "").strip()
     if data_format == "json":
@@ -787,6 +936,15 @@ def _save_stored_documents(items):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     DOCUMENT_STORE_DIR.mkdir(parents=True, exist_ok=True)
     DOCUMENT_STORE_INDEX.write_text(json.dumps(items, indent=2), encoding="utf-8")
+
+
+def _bytes_to_readable(num_bytes: int) -> str:
+    size = float(num_bytes)
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size < 1024.0:
+            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
 
 
 def _snapshot_summary(snapshot):

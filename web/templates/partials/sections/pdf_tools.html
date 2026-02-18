@@ -1,0 +1,26 @@
+            <section class="online-convert-panel" id="pdf-tools">
+                <div class="panel-head">
+                    <h2><i class="fas fa-file-pdf"></i> PDF Compression & Decompression</h2>
+                    <p>Upload a PDF and choose whether to compress it or decompress content streams for easier analysis.</p>
+                </div>
+
+                <div class="online-convert-grid">
+                    <div class="online-control">
+                        <label for="pdf-file">PDF File</label>
+                        <input id="pdf-file" type="file" accept=".pdf,application/pdf" />
+                    </div>
+                    <div class="online-control">
+                        <label for="pdf-mode">Operation</label>
+                        <select id="pdf-mode">
+                            <option value="compress">Compress PDF</option>
+                            <option value="decompress">Decompress PDF</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <button id="pdf-process-btn" class="action-btn primary"><i class="fas fa-bolt"></i> Run PDF Tool</button>
+                </div>
+
+                <div class="status-area" id="pdf-status-area">Ready. Upload a PDF file and run compression or decompression.</div>
+            </section>

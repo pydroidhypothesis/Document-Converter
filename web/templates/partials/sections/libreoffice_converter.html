@@ -1,0 +1,28 @@
+            <section class="online-convert-panel" id="libreoffice-converter">
+                <div class="panel-head">
+                    <h2><i class="fas fa-file-alt"></i> LibreOffice Format Converter</h2>
+                    <p>Convert LibreOffice-centric formats such as ODT, ODS, ODP, and FOD*.</p>
+                </div>
+
+                <div class="online-convert-grid">
+                    <div class="online-control">
+                        <label for="lo-file">LibreOffice Source File</label>
+                        <input id="lo-file" type="file" />
+                    </div>
+                    <div class="online-control">
+                        <label for="lo-output-format">Output Format</label>
+                        <select id="lo-output-format">
+                            <option value="pdf">PDF</option>
+                            <option value="odt">ODT</option>
+                            <option value="ods">ODS</option>
+                            <option value="odp">ODP</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <button id="lo-convert-btn" class="action-btn primary"><i class="fas fa-play"></i> Convert LibreOffice File</button>
+                </div>
+
+                <div class="status-area" id="lo-status-area">Ready. Upload a LibreOffice document to convert.</div>
+            </section>

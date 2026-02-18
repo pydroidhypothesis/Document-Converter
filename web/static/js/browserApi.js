@@ -306,6 +306,34 @@ export async function convertAudioOnline(file, outputFormat, options = {}) {
     return { blob, filename };
 }
 
+export async function processPdfOnline(file, mode = 'compress') {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('mode', mode);
+
+    const response = await fetch('/api/pdf/process', {
+        method: 'POST',
+        body: formData
+    });
+
+    if (!response.ok) {
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (_error) {
+            payload = null;
+        }
+        throw new Error(getErrorMessage(payload, 'PDF processing failed.'));
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+    const filename = match ? match[1] : 'processed.pdf';
+
+    return { blob, filename };
+}
+
 export async function convertDataOnline(payload) {
     const response = await fetch('/api/data/convert', {
         method: 'POST',
