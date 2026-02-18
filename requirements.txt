@@ -22,5 +22,11 @@ python-magic>=0.4.24
 chardet>=4.0.0
 imageio>=2.9.0
 opencv-python>=4.5.0
-pyheif>=0.6.0
+pyheif>=0.7.1; python_version < "3.14"
 rawpy>=0.17.0
+
+# Notes:
+# - pyheif builds native extension and currently fails commonly on Python 3.14.
+# - For Python 3.14, install system libheif development headers and try manual install if needed:
+#   sudo dnf install libheif libheif-devel libffi-devel gcc python3-devel
+#   pip install pyheif

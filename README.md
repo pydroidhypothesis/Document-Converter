@@ -1,119 +1,149 @@
 # DocConvert Pro
 
-Modular conversion toolkit for converting data from one format/version to another.
+DocConvert Pro is a web + CLI conversion toolkit with document/audio/PDF tools, storage browsing, queued conversions, admin diagnostics, and analytics.
 
-## Objective
+## Features
 
-- Keep a modular architecture.
-- Convert data formats (web module).
-- Convert office files (CLI module) including PDF, Word, Excel, Publisher and LibreOffice formats.
+- Document conversion with type/profile control (`legacy`, `modern`)
+- Real-time upload + conversion progress (bars, text meters, queue position)
+- Paste/drag-drop/click upload support with file detail preview
+- LibreOffice format conversion
+- Audio conversion
+- PDF compress/decompress tools
+- Document library with server-side storage and tree browsing
+- Storage-root browser based on `config/storage_config.json`
+- API key request module (`/api/apikey/request`)
+- Admin diagnostics + analytics endpoints (token-protected)
+- Queued batch processing for long-running conversion requests
+- Archive conversion in `src` (zip/tar/tgz/tbz2/txz/gz/bz2/xz/7z)
 
-## Modules
+## Project Layout
 
-### 1) Web Data Converter (JavaScript)
+- Backend: `server.py`
+- CLI entrypoint: `document_converter.py`
+- Core modules: `src/`
+- Active web UI templates/static: `web/templates`, `web/static`
+- Config: `config/`
 
-Pipeline:
-1. Parse input format
-2. Map version (`v1`/`v2`/`v3`)
-3. Serialize output format
+## Quick Start
 
-Files:
-- `main/app.js`
-- `main/uiController.js`
-- `main/converterService.js`
-- `main/converterRegistry.js`
-- `main/formatParsers.js`
-- `main/versionMappers.js`
-- `main/index.html`
-- `main/style.css`
+### 1) Setup environment
 
-Supported data formats:
-- `json`
-- `csv`
-- `ndjson`
-- `keyvalue`
+```bash
+./scripts/setup.sh
+```
 
-### 2) Document Converter (Python + LibreOffice)
+Or manually:
 
-Main files:
-- `main/document_converter.py` (CLI entrypoint)
-- `main/src/converters/document_converters.py` (DocumentConverter module)
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-DocumentConverter supports LibreOffice-backed conversions for:
-- Word/Text: `doc`, `docx`, `odt`, `ott`, `rtf`, `txt`, `html`, `xml`
-- Spreadsheet: `xls`, `xlsx`, `ods`, `ots`, `csv`, `fods`
-- Presentation: `ppt`, `pptx`, `odp`, `otp`, `fodp`
-- Other: `pdf`, `epub`, `pub`
+### 2) Configure storage
 
-Note: Publisher (`.pub`) support depends on LibreOffice import capabilities for the source file.
+Edit `config/storage_config.json`.
 
-## How To Run
+Example:
 
-### Start Backend Server (browser conversion)
+```json
+{
+  "storage": {
+    "data_dir": "data",
+    "snapshots_file": "data/snapshots.json",
+    "documents_dir": "data/documents",
+    "documents_index_file": "data/documents.json",
+    "analytics_file": "data/analytics_events.csv",
+    "api_keys_file": "data/api_keys.json"
+  }
+}
+```
 
-Run from `/home/liveuser/Documents/main`:
+### 3) Configure admin token
+
+Create `config/admin_config.json`:
+
+```json
+{
+  "admin_token": "change-this-token"
+}
+```
+
+Alternative: set env var `DOC_CONVERT_ADMIN_TOKEN`.
+
+### 4) Run server
 
 ```bash
 python server.py
 ```
 
-Then open:
+Open `http://localhost:8000`.
 
-- `http://localhost:8000`
+## Nginx (Fedora)
 
-This enables online document conversion in browser via:
+Install and enable:
+
+```bash
+sudo dnf install -y nginx
+sudo systemctl enable --now nginx
+```
+
+Use template: `config/nginx/docconvert-pro.conf`.
+
+Deploy config:
+
+```bash
+sudo cp config/nginx/docconvert-pro.conf /etc/nginx/conf.d/docconvert-pro.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Open firewall:
+
+```bash
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+```
+
+## API Endpoints (Key Ones)
+
 - `POST /api/document/convert`
-- `GET /api/formats/document`
+- `POST /api/document/convert/start`
+- `GET /api/document/convert/status/<job_id>`
+- `GET /api/document/convert/download/<job_id>`
+- `GET /api/document/convert/queue`
+- `POST /api/audio/convert`
+- `POST /api/pdf/process`
+- `GET /api/storage/config`
+- `GET /api/storage/tree`
+- `POST /api/apikey/request`
 
-### Web UI
+Admin-only (requires `X-Admin-Token`):
 
-1. Start backend with `python server.py`.
-2. Open `http://localhost:8000`.
-3. Use **Online Document Converter** for file upload/download conversion.
-4. Use **Data Workspace** for structured data conversion.
+- `GET /api/admin/diagnostics`
+- `GET /api/admin/analytics/summary`
+- `GET /api/admin/analytics/export`
 
-### CLI Document Conversion
+## CLI Usage
 
-Run from `/home/liveuser/Documents/main`:
+Convert files:
 
 ```bash
 python document_converter.py convert input.docx --to pdf
 python document_converter.py convert input.xlsx --to ods
-python document_converter.py convert input.pub --to pdf
 ```
 
-Optional output path:
+Archive conversion example:
 
 ```bash
-python document_converter.py convert input.pptx --to odp --output output_file.odp
-```
-
-## Requirements
-
-- Python dependencies from `main/requirements.txt`
-- LibreOffice installed and available in `PATH` as `soffice`
-
-## Validation
-
-JavaScript syntax checks:
-
-```bash
-node --check main/app.js
-node --check main/uiController.js
-node --check main/converterService.js
-node --check main/versionMappers.js
-node --check main/formatParsers.js
-node --check main/converterRegistry.js
-```
-
-Python syntax checks:
-
-```bash
-python -m py_compile main/document_converter.py main/src/converters/document_converters.py
+python document_converter.py convert sample.tar --to zip
+python document_converter.py convert sample.tar --to "zip->tar.gz"
 ```
 
 ## Notes
 
-- Existing folder/file structure is preserved.
-- Files/folders were not removed.
-- Implementation stays modular by separating UI, service, registry, parser, mapper, and converter classes.
+- LibreOffice conversion requires `soffice` in PATH.
+- Audio conversion requires `ffmpeg` for best compatibility with `pydub`.
+- `pyheif` is conditional in requirements for Python compatibility.
