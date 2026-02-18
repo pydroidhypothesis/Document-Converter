@@ -3,49 +3,164 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DocConvert Pro - Modular Data Converter</title>
+    <title>DocConvert Pro - Modular Conversion Toolkit</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container modular-app-shell">
+    <div class="container">
         <aside class="sidebar">
             <div class="sidebar-header">
                 <i class="fas fa-cubes sidebar-logo"></i>
                 <h2>DocConvert<span>Pro</span></h2>
                 <p class="sidebar-tagline">Modular Conversion Engine</p>
             </div>
+
             <nav class="sidebar-nav">
                 <ul>
-                    <li class="active">
-                        <a href="#">
-                            <i class="fas fa-database"></i>
-                            <span>Data Converter</span>
-                            <span class="nav-badge">JSON, CSV, NDJSON</span>
-                        </a>
-                    </li>
+                    <li class="active"><a href="#dashboard"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a></li>
+                    <li class="nav-section">Document Module</li>
+                    <li><a href="#online-document"><i class="fas fa-cloud-upload-alt"></i><span>Online Converter</span><span class="nav-badge">Browser Upload</span></a></li>
+                    <li><a href="#office"><i class="fas fa-file-word"></i><span>Office + LibreOffice</span><span class="nav-badge">DOCX XLSX PPTX ODT ODS ODP PUB PDF</span></a></li>
+                    <li><a href="#data-workspace"><i class="fas fa-database"></i><span>Data Workspace</span><span class="nav-badge">JSON CSV NDJSON</span></a></li>
                 </ul>
             </nav>
+
             <div class="sidebar-footer">
                 <div class="module-status">
                     <i class="fas fa-circle" style="color: #10b981;"></i>
-                    <span>Converter Modules Ready</span>
+                    <span>Modules Active</span>
                 </div>
             </div>
         </aside>
 
         <main class="main-content">
-            <header class="content-header">
+            <header class="content-header" id="dashboard">
                 <div class="header-title">
-                    <h1>Modular Data Converter <span class="module-badge">v3.0</span></h1>
-                    <p>Convert between formats and schema versions with isolated modules</p>
+                    <h1>Modular Conversion Toolkit <span class="module-badge">v3.1</span></h1>
+                    <p>Previous dashboard look restored with Office/LibreOffice conversion support</p>
                 </div>
             </header>
 
-            <section class="modular-converter-panel">
+            <section class="dashboard-grid">
+                <div class="module-card">
+                    <div class="module-card-header" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                        <i class="fas fa-file-alt"></i>
+                        <h3>Document Module</h3>
+                    </div>
+                    <div class="module-card-body">
+                        <div class="format-list">
+                            <span class="format-tag">PDF</span>
+                            <span class="format-tag">DOC</span>
+                            <span class="format-tag">DOCX</span>
+                            <span class="format-tag">ODT</span>
+                            <span class="format-tag">RTF</span>
+                            <span class="format-tag">TXT</span>
+                            <span class="format-tag">HTML</span>
+                            <span class="format-tag">XML</span>
+                        </div>
+                        <div class="module-stats">
+                            <span><i class="fas fa-check-circle"></i> LibreOffice engine</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-card-header" style="background: linear-gradient(135deg, #10b981, #059669);">
+                        <i class="fas fa-table"></i>
+                        <h3>Spreadsheet Module</h3>
+                    </div>
+                    <div class="module-card-body">
+                        <div class="format-list">
+                            <span class="format-tag">XLS</span>
+                            <span class="format-tag">XLSX</span>
+                            <span class="format-tag">ODS</span>
+                            <span class="format-tag">CSV</span>
+                            <span class="format-tag">FODS</span>
+                        </div>
+                        <div class="module-stats">
+                            <span><i class="fas fa-sync"></i> Cross-suite conversion</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                        <i class="fas fa-chalkboard"></i>
+                        <h3>Presentation Module</h3>
+                    </div>
+                    <div class="module-card-body">
+                        <div class="format-list">
+                            <span class="format-tag">PPT</span>
+                            <span class="format-tag">PPTX</span>
+                            <span class="format-tag">ODP</span>
+                            <span class="format-tag">FODP</span>
+                            <span class="format-tag">PDF</span>
+                        </div>
+                        <div class="module-stats">
+                            <span><i class="fas fa-desktop"></i> Impress/PowerPoint</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="module-card" id="office">
+                    <div class="module-card-header" style="background: linear-gradient(135deg, #ef4444, #dc2626);">
+                        <i class="fas fa-file-signature"></i>
+                        <h3>Publisher + Other LibreOffice</h3>
+                    </div>
+                    <div class="module-card-body">
+                        <div class="format-list">
+                            <span class="format-tag">PUB</span>
+                            <span class="format-tag">OTT</span>
+                            <span class="format-tag">OTS</span>
+                            <span class="format-tag">OTP</span>
+                            <span class="format-tag">EPUB</span>
+                        </div>
+                        <div class="module-stats">
+                            <span><i class="fas fa-terminal"></i> CLI: `python document_converter.py convert file.pub --to pdf`</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="online-convert-panel" id="online-document">
                 <div class="panel-head">
-                    <h2><i class="fas fa-random"></i> Conversion Workspace</h2>
+                    <h2><i class="fas fa-cloud-upload-alt"></i> Online Document Converter</h2>
+                    <p>Upload a file, select output format, and download converted output in your browser.</p>
+                </div>
+
+                <div class="online-convert-grid">
+                    <div class="online-control">
+                        <label for="doc-file">Source File</label>
+                        <input id="doc-file" type="file" />
+                    </div>
+                    <div class="online-control">
+                        <label for="doc-output-format">Output Format</label>
+                        <select id="doc-output-format">
+                            <option value="pdf">PDF</option>
+                            <option value="docx">DOCX</option>
+                            <option value="odt">ODT</option>
+                            <option value="xlsx">XLSX</option>
+                            <option value="ods">ODS</option>
+                            <option value="pptx">PPTX</option>
+                            <option value="odp">ODP</option>
+                            <option value="txt">TXT</option>
+                            <option value="html">HTML</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <button id="doc-convert-btn" class="action-btn primary"><i class="fas fa-play"></i> Convert Document</button>
+                </div>
+
+                <div class="status-area" id="doc-status-area">Ready. Start server and upload a document to convert.</div>
+            </section>
+
+            <section class="modular-converter-panel" id="data-workspace">
+                <div class="panel-head">
+                    <h2><i class="fas fa-random"></i> Data Conversion Workspace</h2>
                     <p>Pipeline: Parse -> Version Map -> Serialize</p>
                 </div>
 
@@ -101,7 +216,6 @@
                         <h3><i class="fas fa-file-import"></i> Input Data</h3>
                         <textarea id="input-data" spellcheck="false" placeholder="Paste source data here..."></textarea>
                     </div>
-
                     <div class="editor-card">
                         <h3><i class="fas fa-file-export"></i> Output Data</h3>
                         <textarea id="output-data" spellcheck="false" readonly placeholder="Converted data appears here..."></textarea>

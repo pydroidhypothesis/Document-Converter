@@ -1,199 +1,148 @@
-#!/usr/bin/env python3
-"""
-Document Conversion and Compression Toolkit
-Main entry point for the modular conversion system
-"""
-
-import sys
-import argparse
+"""Document format converters powered by LibreOffice."""
+from typing import Dict, List, Any, Union
 from pathlib import Path
+import shutil
+import subprocess
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from src.converters.document_converters import DocumentConverter
-from src.converters.image_converters import ImageConverter
-from src.converters.audio_converters import AudioConverter
-from src.compressors.zip_compressor import ZipCompressor
-from src.compressors.tar_compressor import TarCompressor
-from src.processors.batch_processor import BatchProcessor
-from src.core.file_utils import FileUtils
-from src.core.exceptions import *
+from ..core.base_converter import BaseConverter
+from ..core.exceptions import DependencyMissingError, UnsupportedFormatError
 
 
-class ConversionToolkit:
-    """Main toolkit class that orchestrates all converters"""
-    
-    def __init__(self):
-        self.document_converter = DocumentConverter()
-        self.image_converter = ImageConverter()
-        self.audio_converter = AudioConverter()
-        self.zip_compressor = ZipCompressor()
-        self.tar_compressor = TarCompressor()
-        self.batch_processor = BatchProcessor()
-        self.file_utils = FileUtils()
-    
-    def convert(self, input_file, output_format, **kwargs):
-        """Intelligently route conversion to appropriate converter"""
-        ext = Path(input_file).suffix.lower()
-        
-        # Document formats
-        if ext in ['.txt', '.md', '.html', '.docx', '.odt', '.pdf', '.xml', '.json', '.yaml']:
-            return self.document_converter.convert(input_file, output_format, **kwargs)
-        
-        # Image formats
-        elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic']:
-            return self.image_converter.convert(input_file, output_format, **kwargs)
-        
-        # Audio formats
-        elif ext in ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a']:
-            return self.audio_converter.convert(input_file, output_format, **kwargs)
-        
+class DocumentConverter(BaseConverter):
+    """Converter for document, spreadsheet, presentation and publisher formats."""
+
+    def _get_supported_formats(self) -> Dict[str, List[str]]:
+        return {
+            'input': [
+                '.txt', '.rtf', '.doc', '.docx', '.odt', '.ott', '.sxw',
+                '.xls', '.xlsx', '.ods', '.ots', '.csv',
+                '.ppt', '.pptx', '.odp', '.otp',
+                '.pub', '.html', '.htm', '.xml', '.epub',
+                '.fodt', '.fods', '.fodp'
+            ],
+            'output': [
+                '.pdf', '.txt', '.rtf', '.doc', '.docx', '.odt', '.html', '.xml',
+                '.xls', '.xlsx', '.ods', '.csv', '.ppt', '.pptx', '.odp', '.epub'
+            ]
+        }
+
+    def _resolve_convert_target(self, output_format: str) -> str:
+        """Map extension to LibreOffice convert target/filter."""
+        target_map = {
+            '.pdf': 'pdf',
+            '.txt': 'txt:Text',
+            '.rtf': 'rtf',
+            '.doc': 'doc:MS Word 97',
+            '.docx': 'docx:MS Word 2007 XML',
+            '.odt': 'odt',
+            '.html': 'html:XHTML Writer File',
+            '.xml': 'xml',
+            '.xls': 'xls:MS Excel 97',
+            '.xlsx': 'xlsx:Calc MS Excel 2007 XML',
+            '.ods': 'ods',
+            '.csv': 'csv:Text - txt - csv (StarCalc)',
+            '.ppt': 'ppt:MS PowerPoint 97',
+            '.pptx': 'pptx:Impress MS PowerPoint 2007 XML',
+            '.odp': 'odp',
+            '.epub': 'epub'
+        }
+        return target_map.get(output_format, output_format[1:])
+
+    def _find_generated_file(self, output_dir: Path, stem: str, output_format: str) -> Path:
+        preferred_suffixes = [output_format]
+        if output_format == '.html':
+            preferred_suffixes.append('.htm')
+
+        for suffix in preferred_suffixes:
+            candidate = output_dir / f"{stem}{suffix}"
+            if candidate.exists():
+                return candidate
+
+        matches = sorted(output_dir.glob(f"{stem}.*"))
+        if not matches:
+            raise FileNotFoundError("LibreOffice did not generate an output file")
+
+        return matches[0]
+
+    def convert(self, input_file: Union[str, Path], output_format: str, **kwargs) -> Dict[str, Any]:
+        """Convert using LibreOffice CLI."""
+        soffice_path = shutil.which('soffice')
+        if not soffice_path:
+            raise DependencyMissingError(
+                "LibreOffice not found. Install LibreOffice and ensure 'soffice' is in PATH."
+            )
+
+        input_path = Path(input_file)
+        self.validate_input(input_path)
+
+        source_ext = input_path.suffix.lower()
+        if source_ext not in self.supported_formats['input']:
+            raise UnsupportedFormatError(f"Unsupported input format: {source_ext}")
+
+        output_format = output_format.lower()
+        if not output_format.startswith('.'):
+            output_format = f'.{output_format}'
+
+        if output_format not in self.supported_formats['output']:
+            raise UnsupportedFormatError(f"Unsupported output format: {output_format}")
+
+        output_file = kwargs.get('output_file')
+        if output_file:
+            output_file = Path(output_file)
+            output_dir = output_file.parent
         else:
-            raise UnsupportedFormatError(f"No converter available for {ext}")
+            output_dir = input_path.parent
+            output_file = output_dir / f"{input_path.stem}{output_format}"
 
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-def create_parser():
-    """Create command line argument parser"""
-    parser = argparse.ArgumentParser(
-        description='Document Conversion and Compression Toolkit',
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    
-    subparsers = parser.add_subparsers(dest='command', help='Commands')
-    
-    # Info command
-    info_parser = subparsers.add_parser('info', help='Get file information')
-    info_parser.add_argument('file', help='File to analyze')
-    
-    # Convert command
-    convert_parser = subparsers.add_parser('convert', help='Convert file format')
-    convert_parser.add_argument('file', help='Input file')
-    convert_parser.add_argument('--to', '-t', required=True, help='Target format')
-    convert_parser.add_argument('--output', '-o', help='Output file path')
-    convert_parser.add_argument('--quality', '-q', type=int, default=95, help='Quality (1-100)')
-    convert_parser.add_argument('--resize', help='Resize dimensions (WxH, e.g., 800x600)')
-    convert_parser.add_argument('--bitrate', help='Audio bitrate (e.g., 192k)')
-    
-    # Batch convert
-    batch_parser = subparsers.add_parser('batch', help='Batch convert files')
-    batch_parser.add_argument('folder', help='Folder to process')
-    batch_parser.add_argument('--to', required=True, help='Target format')
-    batch_parser.add_argument('--output', '-o', help='Output folder')
-    batch_parser.add_argument('--recursive', '-r', action='store_true', help='Process subfolders')
-    
-    # Image specific commands
-    image_parser = subparsers.add_parser('image', help='Image operations')
-    image_subparsers = image_parser.add_subparsers(dest='image_command')
-    
-    # Image filter
-    filter_parser = image_subparsers.add_parser('filter', help='Apply filter to image')
-    filter_parser.add_argument('file', help='Image file')
-    filter_parser.add_argument('--filter', '-f', required=True, 
-                              choices=['blur', 'sharpen', 'contour', 'emboss', 
-                                      'edge_enhance', 'find_edges', 'smooth', 
-                                      'grayscale', 'invert'],
-                              help='Filter to apply')
-    filter_parser.add_argument('--output', '-o', help='Output file')
-    
-    # Create PDF from images
-    pdf_parser = image_subparsers.add_parser('pdf', help='Create PDF from images')
-    pdf_parser.add_argument('files', nargs='+', help='Image files')
-    pdf_parser.add_argument('--output', '-o', required=True, help='Output PDF file')
-    
-    # Audio specific commands
-    audio_parser = subparsers.add_parser('audio', help='Audio operations')
-    audio_subparsers = audio_parser.add_subparsers(dest='audio_command')
-    
-    # Merge audio
-    merge_parser = audio_subparsers.add_parser('merge', help='Merge audio files')
-    merge_parser.add_argument('files', nargs='+', help='Audio files')
-    merge_parser.add_argument('--output', '-o', required=True, help='Output file')
-    
-    # Audio metadata
-    metadata_parser = audio_subparsers.add_parser('metadata', help='Extract audio metadata')
-    metadata_parser.add_argument('file', help='Audio file')
-    
-    return parser
+        convert_target = self._resolve_convert_target(output_format)
+        cmd = [
+            soffice_path,
+            '--headless',
+            '--convert-to',
+            convert_target,
+            '--outdir',
+            str(output_dir),
+            str(input_path)
+        ]
 
+        try:
+            process = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
-def main():
-    """Main entry point"""
-    parser = create_parser()
-    args = parser.parse_args()
-    
-    if not args.command:
-        parser.print_help()
-        return
-    
-    toolkit = ConversionToolkit()
-    
-    try:
-        if args.command == 'info':
-            info = toolkit.file_utils.get_file_info(args.file)
-            if info:
-                print("\n📄 File Information:")
-                for key, value in info.items():
-                    print(f"  {key}: {value}")
-            else:
-                print(f"File not found: {args.file}")
-        
-        elif args.command == 'convert':
-            kwargs = {'output_file': args.output} if args.output else {}
-            if args.quality:
-                kwargs['quality'] = args.quality
-            if args.resize:
-                w, h = map(int, args.resize.split('x'))
-                kwargs['resize'] = {'width': w, 'height': h}
-            if args.bitrate:
-                kwargs['bitrate'] = args.bitrate
-            
-            result = toolkit.convert(args.file, args.to, **kwargs)
-            
-            if result['success']:
-                print(f"✅ {result['message']}")
-                print(f"   Output: {result['output_file']}")
-                if 'new_size' in result:
-                    ratio = (1 - result['new_size']/result['original_size']) * 100
-                    print(f"   Size reduction: {ratio:.1f}%")
-            else:
-                print(f"❌ {result['message']}")
-        
-        elif args.command == 'batch':
-            print(f"Starting batch conversion...")
-            # Implement batch processing
-        
-        elif args.command == 'image':
-            if args.image_command == 'filter':
-                result = toolkit.image_converter.apply_filter(
-                    args.file, args.filter, args.output
-                )
-                print(f"✅ {result['message']}" if result['success'] else f"❌ {result['message']}")
-            
-            elif args.image_command == 'pdf':
-                result = toolkit.image_converter.create_pdf(args.files, args.output)
-                print(f"✅ {result['message']}" if result['success'] else f"❌ {result['message']}")
-        
-        elif args.command == 'audio':
-            if args.audio_command == 'merge':
-                result = toolkit.audio_converter.merge_audio(args.files, args.output)
-                print(f"✅ {result['message']}" if result['success'] else f"❌ {result['message']}")
-            
-            elif args.audio_command == 'metadata':
-                metadata = toolkit.audio_converter.extract_metadata(args.file)
-                if metadata:
-                    print("\n🎵 Audio Metadata:")
-                    for key, value in metadata.items():
-                        print(f"  {key}: {value}")
-                else:
-                    print("No metadata found")
-    
-    except Exception as e:
-        print(f"❌ Error: {str(e)}")
-        return 1
-    
-    return 0
+            if process.returncode != 0:
+                error_message = process.stderr.strip() or process.stdout.strip() or 'unknown error'
+                return {
+                    'success': False,
+                    'input_file': str(input_path),
+                    'error': error_message,
+                    'message': f"Document conversion failed: {error_message}"
+                }
 
+            generated = self._find_generated_file(output_dir, input_path.stem, output_format)
+            if generated.resolve() != output_file.resolve():
+                if output_file.exists():
+                    output_file.unlink()
+                generated.replace(output_file)
 
-if __name__ == "__main__":
-    sys.exit(main())
+            result = {
+                'success': True,
+                'input_file': str(input_path),
+                'output_file': str(output_file),
+                'format_from': source_ext,
+                'format_to': output_format,
+                'original_size': input_path.stat().st_size,
+                'new_size': output_file.stat().st_size,
+                'message': f"Converted {source_ext} to {output_format} using LibreOffice"
+            }
+
+            self.add_to_history(result)
+            return result
+
+        except Exception as exc:
+            return {
+                'success': False,
+                'input_file': str(input_path),
+                'error': str(exc),
+                'message': f"Document conversion failed: {exc}"
+            }
