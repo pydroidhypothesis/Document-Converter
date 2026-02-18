@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocConvert Pro - Document Converter</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-cubes sidebar-logo"></i>
+                <h2>DocConvert<span>Pro</span></h2>
+                <p class="sidebar-tagline">Document Conversion</p>
+            </div>
+
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="active"><a href="#online-document"><i class="fas fa-cloud-upload-alt"></i><span>Document Converter</span><span class="nav-badge">Upload + Convert</span></a></li>
+                </ul>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="module-status">
+                    <i class="fas fa-circle" style="color: #10b981;"></i>
+                    <span>Modules Active</span>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="content-header" id="online-document">
+                <div class="header-title">
+                    <h1>Document Converter <span class="module-badge">v3.1</span></h1>
+                    <p>Upload a document, choose output format, and download the converted file.</p>
+                </div>
+            </header>
+
+            <section class="online-convert-panel">
+                <div class="panel-head">
+                    <h2><i class="fas fa-cloud-upload-alt"></i> Online Document Converter</h2>
+                    <p>Upload a file, select output format, and download converted output in your browser.</p>
+                </div>
+
+                <div class="online-convert-grid">
+                    <div class="online-control">
+                        <label for="doc-file">Source File</label>
+                        <input id="doc-file" type="file" />
+                    </div>
+                    <div class="online-control">
+                        <label for="doc-type">Document Type</label>
+                        <select id="doc-type">
+                            <option value="auto">AUTO (detect from file)</option>
+                            <option value="text">TEXT</option>
+                            <option value="spreadsheet">SPREADSHEET</option>
+                            <option value="presentation">PRESENTATION</option>
+                            <option value="publisher">PUBLISHER</option>
+                        </select>
+                    </div>
+                    <div class="online-control">
+                        <label for="doc-output-profile">Output Version/Profile</label>
+                        <select id="doc-output-profile">
+                            <option value="legacy">LEGACY</option>
+                            <option value="modern" selected>MODERN</option>
+                        </select>
+                    </div>
+                    <div class="online-control">
+                        <label for="doc-output-format">Output Format</label>
+                        <select id="doc-output-format">
+                            <option value="pdf">PDF</option>
+                            <option value="docx">DOCX</option>
+                            <option value="odt">ODT</option>
+                            <option value="xlsx">XLSX</option>
+                            <option value="ods">ODS</option>
+                            <option value="pptx">PPTX</option>
+                            <option value="odp">ODP</option>
+                            <option value="txt">TXT</option>
+                            <option value="html">HTML</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <label class="control-item" style="display: flex; align-items: center; gap: 0.5rem; margin-right: 1rem;">
+                        <input id="doc-debug" type="checkbox" />
+                        <span>Debug Mode</span>
+                    </label>
+                    <button id="doc-convert-btn" class="action-btn primary"><i class="fas fa-play"></i> Convert Document</button>
+                </div>
+
+                <div class="status-area" id="doc-status-area">Ready. Start server and upload a document to convert.</div>
+                <pre id="doc-debug-output" class="status-area" style="display: none; white-space: pre-wrap; max-height: 320px; overflow: auto;"></pre>
+            </section>
+        </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
