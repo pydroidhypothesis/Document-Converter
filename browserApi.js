@@ -27,6 +27,14 @@ export async function getDocumentFormats() {
     return response.json();
 }
 
+export async function getLibreOfficeFormats() {
+    const response = await fetch('/api/formats/libreoffice');
+    if (!response.ok) {
+        throw new Error('Failed to load LibreOffice formats from server.');
+    }
+    return response.json();
+}
+
 export async function getAudioFormats() {
     const response = await fetch('/api/formats/audio');
     if (!response.ok) {
@@ -154,6 +162,73 @@ export async function convertDocumentOnline(file, outputFormat, options = {}) {
     const conversionId = response.headers.get('x-conversion-id') || '';
 
     return { blob, filename, conversionId };
+}
+
+export async function startDocumentConversionJob(file, outputFormat, options = {}) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('output_format', outputFormat);
+    formData.append('document_type', options.documentType || 'auto');
+    formData.append('output_profile', options.outputProfile || 'modern');
+    formData.append('debug', options.debug ? 'true' : 'false');
+
+    const response = await fetch('/api/document/convert/start', {
+        method: 'POST',
+        body: formData
+    });
+
+    if (!response.ok) {
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (_error) {
+            payload = null;
+        }
+        throw new Error(getErrorMessage(payload, 'Failed to start conversion job.'));
+    }
+
+    return response.json();
+}
+
+export async function getDocumentConversionJobStatus(jobId) {
+    const response = await fetch(`/api/document/convert/status/${encodeURIComponent(jobId)}`);
+    if (!response.ok) {
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (_error) {
+            payload = null;
+        }
+        throw new Error(getErrorMessage(payload, 'Failed to get conversion status.'));
+    }
+    return response.json();
+}
+
+export async function downloadDocumentConversionJob(jobId) {
+    const response = await fetch(`/api/document/convert/download/${encodeURIComponent(jobId)}`);
+    if (!response.ok) {
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (_error) {
+            payload = null;
+        }
+        throw new Error(getErrorMessage(payload, 'Failed to download converted file.'));
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = match ? match[1] : 'converted-file';
+    return { blob, filename };
+}
+
+export async function convertLibreOfficeOnline(file, outputFormat) {
+    return convertDocumentOnline(file, outputFormat, {
+        documentType: 'auto',
+        outputProfile: 'modern',
+        debug: false
+    });
 }
 
 export async function convertAudioOnline(file, outputFormat, options = {}) {

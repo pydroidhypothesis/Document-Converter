@@ -7,6 +7,7 @@ import json
 import tempfile
 import uuid
 import time
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -88,6 +89,8 @@ OUTPUT_PROFILE_FORMATS = {
 }
 DEBUG_HISTORY_LIMIT = 100
 DEBUG_HISTORY = []
+CONVERSION_JOBS = {}
+CONVERSION_JOBS_LOCK = threading.Lock()
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
 toolkit = ConversionToolkit()
 
@@ -105,6 +108,16 @@ def health():
 @app.get("/api/formats/document")
 def document_formats():
     return jsonify(toolkit.document_converter.supported_formats)
+
+
+@app.get("/api/formats/libreoffice")
+def libreoffice_formats():
+    lo_input = [".odt", ".ott", ".sxw", ".fodt", ".ods", ".ots", ".fods", ".odp", ".otp", ".fodp"]
+    lo_output = [".pdf", ".odt", ".ods", ".odp", ".epub", ".html", ".txt", ".xml", ".csv"]
+    return jsonify({
+        "input": lo_input,
+        "output": lo_output
+    })
 
 
 @app.get("/api/formats/audio")
@@ -127,6 +140,166 @@ def _store_debug_entry(entry):
     DEBUG_HISTORY.append(entry)
     if len(DEBUG_HISTORY) > DEBUG_HISTORY_LIMIT:
         del DEBUG_HISTORY[:-DEBUG_HISTORY_LIMIT]
+
+
+def _update_job(job_id: str, **updates):
+    with CONVERSION_JOBS_LOCK:
+        job = CONVERSION_JOBS.get(job_id)
+        if not job:
+            return
+        job.update(updates)
+        job["updatedAt"] = datetime.now(timezone.utc).isoformat()
+
+
+def _get_job(job_id: str):
+    with CONVERSION_JOBS_LOCK:
+        return CONVERSION_JOBS.get(job_id)
+
+
+def _pop_job(job_id: str):
+    with CONVERSION_JOBS_LOCK:
+        return CONVERSION_JOBS.pop(job_id, None)
+
+
+def _run_document_conversion_job(job_id: str):
+    job = _get_job(job_id)
+    if not job:
+        return
+
+    input_path = Path(job["inputPath"])
+    output_path = Path(job["outputPath"])
+    temp_dir = Path(job["tempDir"])
+    output_format = job["outputFormat"]
+    selected_type = job["documentType"]
+    output_profile = job["outputProfile"]
+    debug_mode = bool(job.get("debug"))
+    safe_name = job["safeName"]
+    started = time.perf_counter()
+    conversion_id = uuid.uuid4().hex
+
+    try:
+        _update_job(job_id, status="running", progress=15, stage="validating", message="Validating input file...")
+        detected_type = _detect_document_type(input_path.suffix.lower())
+        if not detected_type:
+            _update_job(
+                job_id,
+                status="failed",
+                progress=100,
+                stage="failed",
+                message=f"Unsupported source file type: {input_path.suffix.lower() or '(none)'}"
+            )
+            return
+
+        if selected_type != "auto" and selected_type not in OUTPUT_PROFILE_FORMATS:
+            _update_job(
+                job_id,
+                status="failed",
+                progress=100,
+                stage="failed",
+                message=f"Unsupported document type: {selected_type}"
+            )
+            return
+
+        if output_profile not in {"legacy", "modern"}:
+            _update_job(
+                job_id,
+                status="failed",
+                progress=100,
+                stage="failed",
+                message=f"Unsupported output profile: {output_profile}"
+            )
+            return
+
+        effective_type = detected_type if selected_type == "auto" else selected_type
+        if selected_type != "auto" and selected_type != detected_type:
+            _update_job(
+                job_id,
+                status="failed",
+                progress=100,
+                stage="failed",
+                message=f"File type mismatch. Uploaded file is {detected_type}, selected type is {selected_type}."
+            )
+            return
+
+        allowed_outputs = _get_output_formats_for(effective_type, output_profile)
+        if output_format not in allowed_outputs:
+            _update_job(
+                job_id,
+                status="failed",
+                progress=100,
+                stage="failed",
+                message=f"Output format {output_format} is not allowed for type {effective_type} with profile {output_profile}."
+            )
+            return
+
+        _update_job(job_id, progress=60, stage="converting", message="Converting with LibreOffice...")
+        result = toolkit.document_converter.convert(
+            input_file=input_path,
+            output_format=output_format,
+            output_file=output_path,
+            debug=debug_mode
+        )
+
+        debug_entry = {
+            "conversionId": conversion_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "sourceFile": safe_name,
+            "sourceFormat": input_path.suffix.lower(),
+            "documentType": effective_type,
+            "outputProfile": output_profile,
+            "outputFormat": output_format,
+            "durationMs": round((time.perf_counter() - started) * 1000, 2),
+            "success": bool(result.get("success")),
+            "message": result.get("message", ""),
+            "error": result.get("error"),
+            "allowedOutputs": allowed_outputs
+        }
+        if result.get("debug"):
+            debug_entry["converter"] = result["debug"]
+        _store_debug_entry(debug_entry)
+
+        if not result.get("success"):
+            _update_job(
+                job_id,
+                status="failed",
+                progress=100,
+                stage="failed",
+                message=result.get("message", "Document conversion failed"),
+                error=result.get("error"),
+                conversionId=conversion_id
+            )
+            return
+
+        _update_job(job_id, progress=90, stage="finalizing", message="Preparing download...")
+        if not output_path.exists():
+            _update_job(
+                job_id,
+                status="failed",
+                progress=100,
+                stage="failed",
+                message="Converted file is missing"
+            )
+            return
+
+        _update_job(
+            job_id,
+            status="completed",
+            progress=100,
+            stage="completed",
+            message="Conversion complete",
+            conversionId=conversion_id,
+            outputFile=str(output_path),
+            outputFilename=output_path.name
+        )
+    except Exception as exc:
+        _update_job(
+            job_id,
+            status="failed",
+            progress=100,
+            stage="failed",
+            message=f"Conversion failed: {exc}",
+            error=str(exc)
+        )
 
 
 @app.get("/api/formats/document/options")
@@ -335,6 +508,128 @@ def convert_document():
     response.headers["X-Document-Type"] = effective_type
     response.headers["X-Output-Profile"] = output_profile
     return response
+
+
+@app.post("/api/document/convert/start")
+def start_document_conversion():
+    if "file" not in request.files:
+        return jsonify({"success": False, "message": "Missing uploaded file"}), 400
+
+    source = request.files["file"]
+    output_format = (request.form.get("output_format") or "").strip().lower()
+    selected_type = (request.form.get("document_type") or "auto").strip().lower()
+    output_profile = (request.form.get("output_profile") or "modern").strip().lower()
+    debug_mode = (request.form.get("debug") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    if not output_format:
+        return jsonify({"success": False, "message": "Missing output format"}), 400
+    if not output_format.startswith("."):
+        output_format = f".{output_format}"
+
+    if source.filename is None or source.filename.strip() == "":
+        return jsonify({"success": False, "message": "Invalid source filename"}), 400
+
+    safe_name = secure_filename(source.filename)
+    if not safe_name:
+        safe_name = "upload"
+
+    job_id = uuid.uuid4().hex
+    temp_dir = Path(tempfile.mkdtemp(prefix=f"docconvert_job_{job_id[:8]}_"))
+    input_path = temp_dir / safe_name
+    source.save(input_path)
+    output_path = temp_dir / f"{input_path.stem}{output_format}"
+
+    now = datetime.now(timezone.utc).isoformat()
+    with CONVERSION_JOBS_LOCK:
+        CONVERSION_JOBS[job_id] = {
+            "jobId": job_id,
+            "status": "queued",
+            "progress": 5,
+            "stage": "queued",
+            "message": "Job queued",
+            "createdAt": now,
+            "updatedAt": now,
+            "tempDir": str(temp_dir),
+            "inputPath": str(input_path),
+            "outputPath": str(output_path),
+            "safeName": safe_name,
+            "outputFormat": output_format,
+            "documentType": selected_type,
+            "outputProfile": output_profile,
+            "debug": debug_mode,
+            "outputFile": None,
+            "outputFilename": None,
+            "conversionId": None,
+            "error": None
+        }
+
+    thread = threading.Thread(target=_run_document_conversion_job, args=(job_id,), daemon=True)
+    thread.start()
+
+    return jsonify({
+        "jobId": job_id,
+        "status": "queued",
+        "progress": 5,
+        "stage": "queued",
+        "message": "Job started"
+    }), 202
+
+
+@app.get("/api/document/convert/status/<job_id>")
+def get_document_conversion_status(job_id: str):
+    job = _get_job(job_id)
+    if not job:
+        return jsonify({"message": "Job not found"}), 404
+
+    return jsonify({
+        "jobId": job["jobId"],
+        "status": job["status"],
+        "progress": job.get("progress", 0),
+        "stage": job.get("stage", ""),
+        "message": job.get("message", ""),
+        "outputFilename": job.get("outputFilename"),
+        "conversionId": job.get("conversionId"),
+        "error": job.get("error")
+    })
+
+
+@app.get("/api/document/convert/download/<job_id>")
+def download_document_conversion(job_id: str):
+    job = _get_job(job_id)
+    if not job:
+        return jsonify({"message": "Job not found"}), 404
+
+    if job.get("status") != "completed":
+        return jsonify({"message": "Job is not completed yet"}), 409
+
+    output_file = job.get("outputFile")
+    if not output_file:
+        return jsonify({"message": "No output file available"}), 404
+
+    path = Path(output_file)
+    if not path.exists():
+        return jsonify({"message": "Converted file missing on disk"}), 404
+
+    @after_this_request
+    def cleanup(_response):
+        temp_dir = Path(job.get("tempDir", ""))
+        for item in temp_dir.glob("*"):
+            try:
+                item.unlink()
+            except OSError:
+                pass
+        try:
+            temp_dir.rmdir()
+        except OSError:
+            pass
+        _pop_job(job_id)
+        return _response
+
+    return send_file(
+        path,
+        as_attachment=True,
+        download_name=job.get("outputFilename") or path.name
+    )
 
 
 @app.post("/api/audio/convert")

@@ -1,12 +1,14 @@
 import {
     convertAudioOnline,
     convertDocumentOnline,
+    convertLibreOfficeOnline,
     deleteStoredDocument,
     downloadStoredDocument,
     getAudioFormats,
     getDocumentDebug,
     getDocumentFormats,
     getDocumentOptions,
+    getLibreOfficeFormats,
     listStoredDocuments,
     storeDocument,
     triggerDownload
@@ -22,11 +24,22 @@ function getElements() {
         docDebugOutput: document.getElementById('doc-debug-output'),
         docConvertBtn: document.getElementById('doc-convert-btn'),
         docStatusArea: document.getElementById('doc-status-area'),
+        loFile: document.getElementById('lo-file'),
+        loOutputFormat: document.getElementById('lo-output-format'),
+        loConvertBtn: document.getElementById('lo-convert-btn'),
+        loStatusArea: document.getElementById('lo-status-area'),
         audioFile: document.getElementById('audio-file'),
         audioOutputFormat: document.getElementById('audio-output-format'),
         audioBitrate: document.getElementById('audio-bitrate'),
         audioConvertBtn: document.getElementById('audio-convert-btn'),
         audioStatusArea: document.getElementById('audio-status-area'),
+        calcA: document.getElementById('calc-a'),
+        calcB: document.getElementById('calc-b'),
+        calcOp: document.getElementById('calc-op'),
+        calcRunBtn: document.getElementById('calc-run-btn'),
+        calcClearBtn: document.getElementById('calc-clear-btn'),
+        calcStatusArea: document.getElementById('calc-status-area'),
+        calcResultArea: document.getElementById('calc-result-area'),
         storeDocFile: document.getElementById('store-doc-file'),
         storeDocName: document.getElementById('store-doc-name'),
         storedDocList: document.getElementById('stored-doc-list'),
@@ -213,6 +226,46 @@ async function loadAudioFormatOptions(els) {
     populateSelect(els.audioOutputFormat, values, current);
 }
 
+async function loadLibreOfficeFormatOptions(els) {
+    const formats = await getLibreOfficeFormats();
+    if (!Array.isArray(formats.output) || formats.output.length === 0) {
+        return;
+    }
+
+    const current = els.loOutputFormat.value;
+    const values = normalizeFormats(formats.output);
+    populateSelect(els.loOutputFormat, values, current);
+}
+
+async function convertLibreOffice(els) {
+    const file = els.loFile.files?.[0];
+    if (!file) {
+        setStatus(els.loStatusArea, 'Select a LibreOffice file before converting.', 'error');
+        return;
+    }
+
+    const outputFormat = els.loOutputFormat.value;
+    if (!outputFormat) {
+        setStatus(els.loStatusArea, 'Choose an output format.', 'error');
+        return;
+    }
+
+    els.loConvertBtn.disabled = true;
+    els.loConvertBtn.classList.add('loading');
+    setStatus(els.loStatusArea, 'Converting LibreOffice document on server...', 'ok');
+
+    try {
+        const { blob, filename } = await convertLibreOfficeOnline(file, outputFormat);
+        triggerDownload(blob, filename);
+        setStatus(els.loStatusArea, `Success: downloaded ${filename}`, 'ok');
+    } catch (error) {
+        setStatus(els.loStatusArea, `Error: ${error.message}`, 'error');
+    } finally {
+        els.loConvertBtn.disabled = false;
+        els.loConvertBtn.classList.remove('loading');
+    }
+}
+
 async function convertAudio(els) {
     const file = els.audioFile.files?.[0];
     if (!file) {
@@ -241,6 +294,49 @@ async function convertAudio(els) {
         els.audioConvertBtn.disabled = false;
         els.audioConvertBtn.classList.remove('loading');
     }
+}
+
+function runCalculation(els) {
+    const a = Number((els.calcA.value || '').trim());
+    const b = Number((els.calcB.value || '').trim());
+    const op = els.calcOp.value;
+
+    if (!Number.isFinite(a) || !Number.isFinite(b)) {
+        setStatus(els.calcStatusArea, 'Enter valid numeric values.', 'error');
+        els.calcResultArea.textContent = 'Result: -';
+        return;
+    }
+
+    let result;
+    if (op === '+') {
+        result = a + b;
+    } else if (op === '-') {
+        result = a - b;
+    } else if (op === '*') {
+        result = a * b;
+    } else if (op === '/') {
+        if (b === 0) {
+            setStatus(els.calcStatusArea, 'Division by zero is not allowed.', 'error');
+            els.calcResultArea.textContent = 'Result: -';
+            return;
+        }
+        result = a / b;
+    } else {
+        setStatus(els.calcStatusArea, 'Unsupported operation.', 'error');
+        els.calcResultArea.textContent = 'Result: -';
+        return;
+    }
+
+    els.calcResultArea.textContent = `Result: ${result}`;
+    setStatus(els.calcStatusArea, 'Calculation complete.', 'ok');
+}
+
+function clearCalculation(els) {
+    els.calcA.value = '';
+    els.calcB.value = '';
+    els.calcOp.value = '+';
+    els.calcResultArea.textContent = 'Result: -';
+    setStatus(els.calcStatusArea, 'Calculator cleared.', 'ok');
 }
 
 function renderStoredDocuments(els, items) {
@@ -341,8 +437,17 @@ export function initUI() {
     els.docConvertBtn.addEventListener('click', () => {
         void convertDocument(els, docOptions);
     });
+    els.loConvertBtn.addEventListener('click', () => {
+        void convertLibreOffice(els);
+    });
     els.audioConvertBtn.addEventListener('click', () => {
         void convertAudio(els);
+    });
+    els.calcRunBtn.addEventListener('click', () => {
+        runCalculation(els);
+    });
+    els.calcClearBtn.addEventListener('click', () => {
+        clearCalculation(els);
     });
     els.storeDocBtn.addEventListener('click', () => {
         void storeCurrentDocument(els);
@@ -374,7 +479,10 @@ export function initUI() {
     }
 
     setStatus(els.docStatusArea, 'Ready. Start server and convert a document in browser.', 'ok');
+    setStatus(els.loStatusArea, 'Ready. Upload a LibreOffice document to convert.', 'ok');
     setStatus(els.audioStatusArea, 'Ready. Upload audio to convert.', 'ok');
+    setStatus(els.calcStatusArea, 'Ready. Enter values and run a calculation.', 'ok');
+    els.calcResultArea.textContent = 'Result: -';
     setStatus(els.docLibraryStatusArea, 'Ready. Store documents for future users.', 'ok');
     setDebugOutput(els, null);
 
@@ -389,6 +497,10 @@ export function initUI() {
     void loadAudioFormatOptions(els)
         .catch((error) => {
             setStatus(els.audioStatusArea, `Warning: ${error.message}`, 'error');
+        });
+    void loadLibreOfficeFormatOptions(els)
+        .catch((error) => {
+            setStatus(els.loStatusArea, `Warning: ${error.message}`, 'error');
         });
     void refreshStoredDocuments(els, true);
 
