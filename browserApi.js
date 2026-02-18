@@ -49,6 +49,72 @@ export async function getDocumentDebug(conversionId) {
     return response.json();
 }
 
+export async function listStoredDocuments() {
+    const response = await fetch('/api/document/store');
+    if (!response.ok) {
+        throw new Error('Failed to load stored documents.');
+    }
+    return response.json();
+}
+
+export async function storeDocument(file, name = '') {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+
+    const response = await fetch('/api/document/store', {
+        method: 'POST',
+        body: formData
+    });
+
+    if (!response.ok) {
+        let body = null;
+        try {
+            body = await response.json();
+        } catch (_error) {
+            body = null;
+        }
+        throw new Error(getErrorMessage(body, 'Failed to store document.'));
+    }
+
+    return response.json();
+}
+
+export async function downloadStoredDocument(documentId) {
+    const response = await fetch(`/api/document/store/${encodeURIComponent(documentId)}/download`);
+    if (!response.ok) {
+        let body = null;
+        try {
+            body = await response.json();
+        } catch (_error) {
+            body = null;
+        }
+        throw new Error(getErrorMessage(body, 'Failed to download stored document.'));
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = match ? match[1] : 'stored-document';
+    return { blob, filename };
+}
+
+export async function deleteStoredDocument(documentId) {
+    const response = await fetch(`/api/document/store/${encodeURIComponent(documentId)}`, {
+        method: 'DELETE'
+    });
+    if (!response.ok) {
+        let body = null;
+        try {
+            body = await response.json();
+        } catch (_error) {
+            body = null;
+        }
+        throw new Error(getErrorMessage(body, 'Failed to delete stored document.'));
+    }
+    return response.json();
+}
+
 export async function convertDocumentOnline(file, outputFormat, options = {}) {
     const formData = new FormData();
     formData.append('file', file);

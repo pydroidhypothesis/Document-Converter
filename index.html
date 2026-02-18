@@ -20,6 +20,7 @@
             <nav class="sidebar-nav">
                 <ul>
                     <li class="active"><a href="#online-document"><i class="fas fa-cloud-upload-alt"></i><span>Document Converter</span><span class="nav-badge">Upload + Convert</span></a></li>
+                    <li><a href="#document-library"><i class="fas fa-folder-plus"></i><span>Document Library</span><span class="nav-badge">Store for Future</span></a></li>
                 </ul>
             </nav>
 
@@ -93,6 +94,39 @@
 
                 <div class="status-area" id="doc-status-area">Ready. Start server and upload a document to convert.</div>
                 <pre id="doc-debug-output" class="status-area" style="display: none; white-space: pre-wrap; max-height: 320px; overflow: auto;"></pre>
+            </section>
+
+            <section class="online-convert-panel" id="document-library">
+                <div class="panel-head">
+                    <h2><i class="fas fa-folder-plus"></i> Document Library</h2>
+                    <p>Store documents on the server so future users can download and reuse them.</p>
+                </div>
+
+                <div class="online-convert-grid">
+                    <div class="online-control">
+                        <label for="store-doc-file">Document File</label>
+                        <input id="store-doc-file" type="file" />
+                    </div>
+                    <div class="online-control">
+                        <label for="store-doc-name">Display Name</label>
+                        <input id="store-doc-name" type="text" placeholder="Optional label for users" />
+                    </div>
+                    <div class="online-control">
+                        <label for="stored-doc-list">Stored Documents</label>
+                        <select id="stored-doc-list">
+                            <option value="">No documents loaded</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="button-row">
+                    <button id="store-doc-btn" class="action-btn primary"><i class="fas fa-save"></i> Store Document</button>
+                    <button id="refresh-doc-list-btn" class="action-btn"><i class="fas fa-sync"></i> Refresh List</button>
+                    <button id="download-doc-btn" class="action-btn"><i class="fas fa-download"></i> Download Selected</button>
+                    <button id="delete-doc-btn" class="action-btn"><i class="fas fa-trash"></i> Delete Selected</button>
+                </div>
+
+                <div class="status-area" id="doc-library-status-area">Ready. Store documents for future users.</div>
             </section>
         </main>
     </div>

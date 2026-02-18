@@ -19,6 +19,8 @@ from document_converter import ConversionToolkit
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_STORE_FILE = DATA_DIR / "snapshots.json"
+DOCUMENT_STORE_DIR = DATA_DIR / "documents"
+DOCUMENT_STORE_INDEX = DATA_DIR / "documents.json"
 DOCUMENT_TYPE_INPUTS = {
     "text": {".txt", ".rtf", ".doc", ".docx", ".odt", ".ott", ".sxw", ".html", ".htm", ".xml", ".epub", ".fodt"},
     "spreadsheet": {".xls", ".xlsx", ".ods", ".ots", ".csv", ".fods"},
@@ -98,6 +100,81 @@ def get_document_debug(conversion_id: str):
     if not entry:
         return jsonify({"message": "Debug entry not found"}), 404
     return jsonify({"item": entry})
+
+
+@app.get("/api/document/store")
+def list_stored_documents():
+    items = _load_stored_documents()
+    items.sort(key=lambda item: item.get("createdAt", ""), reverse=True)
+    return jsonify({"items": items})
+
+
+@app.post("/api/document/store")
+def store_document():
+    if "file" not in request.files:
+        return jsonify({"success": False, "message": "Missing uploaded file"}), 400
+
+    source = request.files["file"]
+    if source.filename is None or source.filename.strip() == "":
+        return jsonify({"success": False, "message": "Invalid source filename"}), 400
+
+    safe_name = secure_filename(source.filename)
+    if not safe_name:
+        safe_name = "document"
+
+    document_id = uuid.uuid4().hex
+    stored_name = f"{document_id}_{safe_name}"
+    DOCUMENT_STORE_DIR.mkdir(parents=True, exist_ok=True)
+    stored_path = DOCUMENT_STORE_DIR / stored_name
+    source.save(stored_path)
+
+    item = {
+        "id": document_id,
+        "name": (request.form.get("name") or "").strip() or safe_name,
+        "originalFilename": safe_name,
+        "storedFilename": stored_name,
+        "sizeBytes": stored_path.stat().st_size,
+        "createdAt": datetime.now(timezone.utc).isoformat()
+    }
+
+    items = _load_stored_documents()
+    items.append(item)
+    _save_stored_documents(items)
+    return jsonify({"item": item}), 201
+
+
+@app.get("/api/document/store/<document_id>/download")
+def download_stored_document(document_id: str):
+    items = _load_stored_documents()
+    item = next((entry for entry in items if entry.get("id") == document_id), None)
+    if not item:
+        return jsonify({"message": "Stored document not found"}), 404
+
+    path = DOCUMENT_STORE_DIR / item["storedFilename"]
+    if not path.exists():
+        return jsonify({"message": "Stored file missing on disk"}), 404
+
+    return send_file(path, as_attachment=True, download_name=item.get("originalFilename", path.name))
+
+
+@app.delete("/api/document/store/<document_id>")
+def delete_stored_document(document_id: str):
+    items = _load_stored_documents()
+    item = next((entry for entry in items if entry.get("id") == document_id), None)
+    if not item:
+        return jsonify({"message": "Stored document not found"}), 404
+
+    filtered = [entry for entry in items if entry.get("id") != document_id]
+    _save_stored_documents(filtered)
+
+    path = DOCUMENT_STORE_DIR / item.get("storedFilename", "")
+    if path.exists():
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+    return jsonify({"success": True})
 
 
 @app.post("/api/document/convert")
@@ -291,6 +368,21 @@ def _load_snapshots():
 def _save_snapshots(snapshots):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     DATA_STORE_FILE.write_text(json.dumps(snapshots, indent=2), encoding="utf-8")
+
+
+def _load_stored_documents():
+    if not DOCUMENT_STORE_INDEX.exists():
+        return []
+    try:
+        return json.loads(DOCUMENT_STORE_INDEX.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_stored_documents(items):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DOCUMENT_STORE_DIR.mkdir(parents=True, exist_ok=True)
+    DOCUMENT_STORE_INDEX.write_text(json.dumps(items, indent=2), encoding="utf-8")
 
 
 def _snapshot_summary(snapshot):

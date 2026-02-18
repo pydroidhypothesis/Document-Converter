@@ -1,8 +1,12 @@
 import {
     convertDocumentOnline,
+    deleteStoredDocument,
+    downloadStoredDocument,
     getDocumentDebug,
     getDocumentFormats,
     getDocumentOptions,
+    listStoredDocuments,
+    storeDocument,
     triggerDownload
 } from './browserApi.js';
 
@@ -15,7 +19,15 @@ function getElements() {
         docDebug: document.getElementById('doc-debug'),
         docDebugOutput: document.getElementById('doc-debug-output'),
         docConvertBtn: document.getElementById('doc-convert-btn'),
-        docStatusArea: document.getElementById('doc-status-area')
+        docStatusArea: document.getElementById('doc-status-area'),
+        storeDocFile: document.getElementById('store-doc-file'),
+        storeDocName: document.getElementById('store-doc-name'),
+        storedDocList: document.getElementById('stored-doc-list'),
+        storeDocBtn: document.getElementById('store-doc-btn'),
+        refreshDocListBtn: document.getElementById('refresh-doc-list-btn'),
+        downloadDocBtn: document.getElementById('download-doc-btn'),
+        deleteDocBtn: document.getElementById('delete-doc-btn'),
+        docLibraryStatusArea: document.getElementById('doc-library-status-area')
     };
 }
 
@@ -183,6 +195,93 @@ async function convertDocument(els, docOptions) {
     }
 }
 
+function renderStoredDocuments(els, items) {
+    const selected = els.storedDocList.value;
+    els.storedDocList.innerHTML = '';
+
+    if (!Array.isArray(items) || items.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No documents stored';
+        els.storedDocList.appendChild(option);
+        return;
+    }
+
+    items.forEach((item) => {
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = `${item.name} (${item.originalFilename})`;
+        els.storedDocList.appendChild(option);
+    });
+
+    if ([...els.storedDocList.options].some((option) => option.value === selected)) {
+        els.storedDocList.value = selected;
+    }
+}
+
+async function refreshStoredDocuments(els, silent = false) {
+    try {
+        const result = await listStoredDocuments();
+        renderStoredDocuments(els, result.items);
+        if (!silent) {
+            setStatus(els.docLibraryStatusArea, `Loaded ${result.items.length} stored document(s).`, 'ok');
+        }
+    } catch (error) {
+        if (!silent) {
+            setStatus(els.docLibraryStatusArea, `Error: ${error.message}`, 'error');
+        }
+    }
+}
+
+async function storeCurrentDocument(els) {
+    const file = els.storeDocFile.files?.[0];
+    if (!file) {
+        setStatus(els.docLibraryStatusArea, 'Select a file to store.', 'error');
+        return;
+    }
+
+    try {
+        await storeDocument(file, (els.storeDocName.value || '').trim());
+        els.storeDocFile.value = '';
+        await refreshStoredDocuments(els, true);
+        setStatus(els.docLibraryStatusArea, 'Document stored for future users.', 'ok');
+    } catch (error) {
+        setStatus(els.docLibraryStatusArea, `Error: ${error.message}`, 'error');
+    }
+}
+
+async function downloadSelectedDocument(els) {
+    const id = els.storedDocList.value;
+    if (!id) {
+        setStatus(els.docLibraryStatusArea, 'Select a stored document to download.', 'error');
+        return;
+    }
+
+    try {
+        const { blob, filename } = await downloadStoredDocument(id);
+        triggerDownload(blob, filename);
+        setStatus(els.docLibraryStatusArea, `Downloaded ${filename}.`, 'ok');
+    } catch (error) {
+        setStatus(els.docLibraryStatusArea, `Error: ${error.message}`, 'error');
+    }
+}
+
+async function deleteSelectedDocument(els) {
+    const id = els.storedDocList.value;
+    if (!id) {
+        setStatus(els.docLibraryStatusArea, 'Select a stored document to delete.', 'error');
+        return;
+    }
+
+    try {
+        await deleteStoredDocument(id);
+        await refreshStoredDocuments(els, true);
+        setStatus(els.docLibraryStatusArea, 'Stored document deleted.', 'ok');
+    } catch (error) {
+        setStatus(els.docLibraryStatusArea, `Error: ${error.message}`, 'error');
+    }
+}
+
 export function initUI() {
     const els = getElements();
     let docOptions = {
@@ -193,6 +292,18 @@ export function initUI() {
 
     els.docConvertBtn.addEventListener('click', () => {
         void convertDocument(els, docOptions);
+    });
+    els.storeDocBtn.addEventListener('click', () => {
+        void storeCurrentDocument(els);
+    });
+    els.refreshDocListBtn.addEventListener('click', () => {
+        void refreshStoredDocuments(els);
+    });
+    els.downloadDocBtn.addEventListener('click', () => {
+        void downloadSelectedDocument(els);
+    });
+    els.deleteDocBtn.addEventListener('click', () => {
+        void deleteSelectedDocument(els);
     });
 
     els.docType.addEventListener('change', () => {
@@ -212,6 +323,7 @@ export function initUI() {
     }
 
     setStatus(els.docStatusArea, 'Ready. Start server and convert a document in browser.', 'ok');
+    setStatus(els.docLibraryStatusArea, 'Ready. Store documents for future users.', 'ok');
     setDebugOutput(els, null);
 
     void loadDocumentControls(els)
@@ -222,6 +334,7 @@ export function initUI() {
         .catch((error) => {
             setStatus(els.docStatusArea, `Warning: ${error.message}`, 'error');
         });
+    void refreshStoredDocuments(els, true);
 
     initNavigation();
 }
