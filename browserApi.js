@@ -172,22 +172,51 @@ export async function startDocumentConversionJob(file, outputFormat, options = {
     formData.append('output_profile', options.outputProfile || 'modern');
     formData.append('debug', options.debug ? 'true' : 'false');
 
-    const response = await fetch('/api/document/convert/start', {
-        method: 'POST',
-        body: formData
+    const uploadStartedAt = Date.now();
+    const onUploadProgress = typeof options.onUploadProgress === 'function' ? options.onUploadProgress : null;
+
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/document/convert/start');
+
+        xhr.upload.onprogress = (event) => {
+            if (!onUploadProgress || !event.lengthComputable) {
+                return;
+            }
+            const elapsedMs = Math.max(1, Date.now() - uploadStartedAt);
+            const loaded = event.loaded || 0;
+            const total = event.total || 0;
+            onUploadProgress({
+                loaded,
+                total,
+                percent: total > 0 ? (loaded / total) * 100 : 0,
+                elapsedMs,
+                speedBps: loaded / (elapsedMs / 1000)
+            });
+        };
+
+        xhr.onerror = () => {
+            reject(new Error('Failed to start conversion job.'));
+        };
+
+        xhr.onload = () => {
+            let payload = null;
+            try {
+                payload = JSON.parse(xhr.responseText || '{}');
+            } catch (_error) {
+                payload = null;
+            }
+
+            if (xhr.status < 200 || xhr.status >= 300) {
+                reject(new Error(getErrorMessage(payload, 'Failed to start conversion job.')));
+                return;
+            }
+
+            resolve(payload);
+        };
+
+        xhr.send(formData);
     });
-
-    if (!response.ok) {
-        let payload = null;
-        try {
-            payload = await response.json();
-        } catch (_error) {
-            payload = null;
-        }
-        throw new Error(getErrorMessage(payload, 'Failed to start conversion job.'));
-    }
-
-    return response.json();
 }
 
 export async function getDocumentConversionJobStatus(jobId) {

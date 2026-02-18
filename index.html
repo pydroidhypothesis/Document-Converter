@@ -19,7 +19,7 @@
 
             <nav class="sidebar-nav">
                 <ul>
-                    <li class="active"><a href="#online-document"><i class="fas fa-cloud-upload-alt"></i><span>Document Converter</span><span class="nav-badge">Upload + Convert</span></a></li>
+                    <li class="active"><a href="#document-converter"><i class="fas fa-cloud-upload-alt"></i><span>Document Converter</span><span class="nav-badge">Upload + Convert</span></a></li>
                     <li><a href="#libreoffice-converter"><i class="fas fa-file-alt"></i><span>LibreOffice Formats</span><span class="nav-badge">ODT ODS ODP</span></a></li>
                     <li><a href="#audio-converter"><i class="fas fa-music"></i><span>Audio Converter</span><span class="nav-badge">Upload + Convert</span></a></li>
                     <li><a href="#online-calculator"><i class="fas fa-calculator"></i><span>Online Calculator</span><span class="nav-badge">Quick Math</span></a></li>
@@ -43,7 +43,7 @@
                 </div>
             </header>
 
-            <section class="online-convert-panel">
+            <section class="online-convert-panel" id="document-converter">
                 <div class="panel-head">
                     <h2><i class="fas fa-cloud-upload-alt"></i> Online Document Converter</h2>
                     <p>Upload a file, select output format, and download converted output in your browser.</p>
@@ -95,8 +95,32 @@
                     <button id="doc-convert-btn" class="action-btn primary"><i class="fas fa-play"></i> Convert Document</button>
                 </div>
 
-                <div class="status-area" id="doc-progress-text">Progress: idle</div>
-                <div class="status-area" style="padding: 6px;">
+                <div class="online-convert-grid">
+                    <div class="online-control">
+                        <label>Selected File</label>
+                        <div class="status-area" id="doc-selected-file">No file selected</div>
+                    </div>
+                    <div class="online-control">
+                        <label>Upload Speed</label>
+                        <div class="status-area" id="doc-upload-speed">0 KB/s</div>
+                    </div>
+                    <div class="online-control">
+                        <label>Elapsed Time</label>
+                        <div class="status-area" id="doc-elapsed-time">0s</div>
+                    </div>
+                    <div class="online-control">
+                        <label>Estimated Remaining</label>
+                        <div class="status-area" id="doc-eta-time">--</div>
+                    </div>
+                </div>
+
+                <div class="status-area" id="doc-progress-text">Stage: idle</div>
+                <div class="status-area" style="padding: 8px;">
+                    <div style="font-size: 0.85rem; margin-bottom: 4px;">Upload</div>
+                    <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin-bottom: 8px;">
+                        <div id="doc-upload-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #60a5fa); transition: width 0.2s ease;"></div>
+                    </div>
+                    <div style="font-size: 0.85rem; margin-bottom: 4px;">Conversion</div>
                     <div id="doc-progress-track" style="width: 100%; height: 10px; background: #e5e7eb; border-radius: 999px; overflow: hidden;">
                         <div id="doc-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #16a34a, #22c55e); transition: width 0.25s ease;"></div>
                     </div>
@@ -175,33 +199,8 @@
                     <p>Run quick calculations directly in the app.</p>
                 </div>
 
-                <div class="online-convert-grid">
-                    <div class="online-control">
-                        <label for="calc-a">Value A</label>
-                        <input id="calc-a" type="number" step="any" placeholder="Enter first number" />
-                    </div>
-                    <div class="online-control">
-                        <label for="calc-op">Operation</label>
-                        <select id="calc-op">
-                            <option value="+">Add (+)</option>
-                            <option value="-">Subtract (-)</option>
-                            <option value="*">Multiply (*)</option>
-                            <option value="/">Divide (/)</option>
-                        </select>
-                    </div>
-                    <div class="online-control">
-                        <label for="calc-b">Value B</label>
-                        <input id="calc-b" type="number" step="any" placeholder="Enter second number" />
-                    </div>
-                </div>
-
-                <div class="button-row">
-                    <button id="calc-run-btn" class="action-btn primary"><i class="fas fa-play"></i> Calculate</button>
-                    <button id="calc-clear-btn" class="action-btn"><i class="fas fa-eraser"></i> Clear</button>
-                </div>
-
+                <div id="calc-root" class="online-control"></div>
                 <div class="status-area" id="calc-status-area">Ready. Enter values and run a calculation.</div>
-                <div class="status-area" id="calc-result-area">Result: -</div>
             </section>
 
             <section class="online-convert-panel" id="document-library">

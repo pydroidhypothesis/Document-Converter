@@ -1,15 +1,17 @@
 import {
     convertAudioOnline,
-    convertDocumentOnline,
     convertLibreOfficeOnline,
     deleteStoredDocument,
+    downloadDocumentConversionJob,
     downloadStoredDocument,
     getAudioFormats,
+    getDocumentConversionJobStatus,
     getDocumentDebug,
     getDocumentFormats,
     getDocumentOptions,
     getLibreOfficeFormats,
     listStoredDocuments,
+    startDocumentConversionJob,
     storeDocument,
     triggerDownload
 } from './browserApi.js';
@@ -23,6 +25,13 @@ function getElements() {
         docDebug: document.getElementById('doc-debug'),
         docDebugOutput: document.getElementById('doc-debug-output'),
         docConvertBtn: document.getElementById('doc-convert-btn'),
+        docProgressText: document.getElementById('doc-progress-text'),
+        docUploadBar: document.getElementById('doc-upload-bar'),
+        docProgressBar: document.getElementById('doc-progress-bar'),
+        docSelectedFile: document.getElementById('doc-selected-file'),
+        docUploadSpeed: document.getElementById('doc-upload-speed'),
+        docElapsedTime: document.getElementById('doc-elapsed-time'),
+        docEtaTime: document.getElementById('doc-eta-time'),
         docStatusArea: document.getElementById('doc-status-area'),
         loFile: document.getElementById('lo-file'),
         loOutputFormat: document.getElementById('lo-output-format'),
@@ -33,13 +42,8 @@ function getElements() {
         audioBitrate: document.getElementById('audio-bitrate'),
         audioConvertBtn: document.getElementById('audio-convert-btn'),
         audioStatusArea: document.getElementById('audio-status-area'),
-        calcA: document.getElementById('calc-a'),
-        calcB: document.getElementById('calc-b'),
-        calcOp: document.getElementById('calc-op'),
-        calcRunBtn: document.getElementById('calc-run-btn'),
-        calcClearBtn: document.getElementById('calc-clear-btn'),
+        calcRoot: document.getElementById('calc-root'),
         calcStatusArea: document.getElementById('calc-status-area'),
-        calcResultArea: document.getElementById('calc-result-area'),
         storeDocFile: document.getElementById('store-doc-file'),
         storeDocName: document.getElementById('store-doc-name'),
         storedDocList: document.getElementById('stored-doc-list'),
@@ -74,24 +78,180 @@ function setDebugOutput(els, payload) {
     els.docDebugOutput.textContent = JSON.stringify(payload, null, 2);
 }
 
-function initNavigation() {
-    const links = [...document.querySelectorAll('.sidebar-nav a[href^="#"]')];
-    links.forEach((link) => {
-        link.addEventListener('click', (event) => {
-            const target = document.querySelector(link.getAttribute('href'));
-            if (!target) {
+function setDocumentProgress(els, value, text = '') {
+    const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
+    if (els.docProgressBar) {
+        els.docProgressBar.style.width = `${safeValue}%`;
+    }
+    if (els.docProgressText) {
+        els.docProgressText.textContent = text || `Progress: ${safeValue}%`;
+    }
+}
+
+function setUploadProgress(els, value) {
+    const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
+    if (els.docUploadBar) {
+        els.docUploadBar.style.width = `${safeValue}%`;
+    }
+}
+
+function formatBytesPerSecond(value) {
+    if (!Number.isFinite(value) || value <= 0) {
+        return '0 KB/s';
+    }
+    if (value < 1024) {
+        return `${value.toFixed(0)} B/s`;
+    }
+    if (value < 1024 * 1024) {
+        return `${(value / 1024).toFixed(1)} KB/s`;
+    }
+    return `${(value / (1024 * 1024)).toFixed(2)} MB/s`;
+}
+
+function formatDurationMs(ms) {
+    if (!Number.isFinite(ms) || ms <= 0) {
+        return '0s';
+    }
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function initCalculator(els) {
+    if (!els.calcRoot) {
+        return;
+    }
+
+    const shell = document.createElement('div');
+    shell.style.maxWidth = '360px';
+    shell.style.border = '1px solid #d1d5db';
+    shell.style.borderRadius = '10px';
+    shell.style.padding = '10px';
+    shell.style.background = '#f9fafb';
+
+    const display = document.createElement('input');
+    display.type = 'text';
+    display.readOnly = true;
+    display.value = '0';
+    display.style.width = '100%';
+    display.style.marginBottom = '10px';
+    display.style.padding = '10px';
+    display.style.fontSize = '1.15rem';
+    display.style.textAlign = 'right';
+    display.style.border = '1px solid #cbd5e1';
+    display.style.borderRadius = '8px';
+
+    const keypad = document.createElement('div');
+    keypad.style.display = 'grid';
+    keypad.style.gridTemplateColumns = 'repeat(4, minmax(0, 1fr))';
+    keypad.style.gap = '8px';
+
+    const keys = ['7', '8', '9', '/', '4', '5', '6', '*', '1', '2', '3', '-', '0', '.', 'C', '+', 'DEL', '='];
+    let expression = '';
+
+    const updateDisplay = () => {
+        display.value = expression || '0';
+    };
+
+    const evalExpression = () => {
+        if (!expression) {
+            setStatus(els.calcStatusArea, 'Enter an expression first.', 'error');
+            return;
+        }
+        try {
+            // Restrict to calculator-safe characters before evaluating.
+            if (!/^[0-9+\-*/.()\s]+$/.test(expression)) {
+                throw new Error('Invalid expression');
+            }
+            const value = Function(`"use strict"; return (${expression})`)();
+            if (!Number.isFinite(value)) {
+                throw new Error('Invalid calculation');
+            }
+            expression = String(value);
+            updateDisplay();
+            setStatus(els.calcStatusArea, 'Calculation complete.', 'ok');
+        } catch (_error) {
+            expression = '';
+            updateDisplay();
+            setStatus(els.calcStatusArea, 'Invalid expression.', 'error');
+        }
+    };
+
+    keys.forEach((key) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = key === '=' ? 'action-btn primary' : 'action-btn';
+        button.textContent = key;
+        button.addEventListener('click', () => {
+            if (key === 'C') {
+                expression = '';
+                updateDisplay();
+                setStatus(els.calcStatusArea, 'Calculator cleared.', 'ok');
                 return;
             }
+            if (key === 'DEL') {
+                expression = expression.slice(0, -1);
+                updateDisplay();
+                return;
+            }
+            if (key === '=') {
+                evalExpression();
+                return;
+            }
+            expression += key;
+            updateDisplay();
+        });
+        keypad.appendChild(button);
+    });
+
+    shell.appendChild(display);
+    shell.appendChild(keypad);
+    els.calcRoot.innerHTML = '';
+    els.calcRoot.appendChild(shell);
+}
+
+function initNavigation() {
+    const links = [...document.querySelectorAll('.sidebar-nav a[href^="#"]')];
+    const sections = links
+        .map((link) => document.querySelector(link.getAttribute('href')))
+        .filter((section) => section);
+
+    const showOnly = (activeLink) => {
+        const target = document.querySelector(activeLink.getAttribute('href'));
+        if (!target) {
+            return;
+        }
+
+        sections.forEach((section) => {
+            section.style.display = section === target ? '' : 'none';
+        });
+
+        links.forEach((item) => {
+            const parent = item.closest('li');
+            if (parent) {
+                parent.classList.toggle('active', item === activeLink);
+            }
+        });
+    };
+
+    links.forEach((link) => {
+        link.addEventListener('click', (event) => {
             event.preventDefault();
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            links.forEach((item) => {
-                const parent = item.closest('li');
-                if (parent) {
-                    parent.classList.toggle('active', item === link);
-                }
-            });
+            showOnly(link);
         });
     });
+
+    if (links.length > 0) {
+        showOnly(links[0]);
+    }
 }
 
 function normalizeFormats(list) {
@@ -184,22 +344,98 @@ async function convertDocument(els, docOptions) {
     const documentType = els.docType.value || 'auto';
     const outputProfile = els.docOutputProfile.value || (docOptions.defaultProfile || 'modern');
     const debug = Boolean(els.docDebug?.checked);
+    const startedAt = Date.now();
 
     els.docConvertBtn.disabled = true;
     els.docConvertBtn.classList.add('loading');
+    if (els.docSelectedFile) {
+        const fileSizeMb = (file.size / (1024 * 1024)).toFixed(2);
+        els.docSelectedFile.textContent = `${file.name} (${fileSizeMb} MB)`;
+    }
+    if (els.docUploadSpeed) {
+        els.docUploadSpeed.textContent = '0 KB/s';
+    }
+    if (els.docElapsedTime) {
+        els.docElapsedTime.textContent = '0s';
+    }
+    if (els.docEtaTime) {
+        els.docEtaTime.textContent = '--';
+    }
+    setUploadProgress(els, 0);
+    setDocumentProgress(els, 0, 'Stage: upload');
     setStatus(els.docStatusArea, 'Converting document on server...', 'ok');
 
     try {
-        const { blob, filename, conversionId } = await convertDocumentOnline(file, outputFormat, {
+        const start = await startDocumentConversionJob(file, outputFormat, {
             documentType,
             outputProfile,
-            debug
+            debug,
+            onUploadProgress: (info) => {
+                setUploadProgress(els, info.percent || 0);
+                if (els.docUploadSpeed) {
+                    els.docUploadSpeed.textContent = formatBytesPerSecond(info.speedBps || 0);
+                }
+                if (els.docElapsedTime) {
+                    els.docElapsedTime.textContent = formatDurationMs(Date.now() - startedAt);
+                }
+                if (els.docEtaTime && info.speedBps > 0 && info.total > info.loaded) {
+                    const etaMs = ((info.total - info.loaded) / info.speedBps) * 1000;
+                    els.docEtaTime.textContent = formatDurationMs(etaMs);
+                }
+            }
         });
+        setUploadProgress(els, 100);
+        let statusPayload = {
+            jobId: start.jobId,
+            status: start.status || 'queued',
+            progress: start.progress || 5,
+            stage: start.stage || 'queued',
+            message: start.message || 'Job queued',
+            conversionId: null
+        };
+
+        const deadline = Date.now() + 10 * 60 * 1000;
+        while (statusPayload.status !== 'completed' && statusPayload.status !== 'failed') {
+            if (Date.now() > deadline) {
+                throw new Error('Conversion timed out. Please try again.');
+            }
+
+            const progress = statusPayload.progress || 0;
+            setDocumentProgress(
+                els,
+                progress,
+                `Stage: ${statusPayload.stage || 'processing'} (${progress}%)`
+            );
+            if (els.docElapsedTime) {
+                const elapsedMs = Date.now() - startedAt;
+                els.docElapsedTime.textContent = formatDurationMs(elapsedMs);
+                if (els.docEtaTime) {
+                    if (progress > 0 && progress < 100) {
+                        const etaMs = (elapsedMs * (100 - progress)) / progress;
+                        els.docEtaTime.textContent = formatDurationMs(etaMs);
+                    } else if (progress >= 100) {
+                        els.docEtaTime.textContent = '0s';
+                    }
+                }
+            }
+            statusPayload = await getDocumentConversionJobStatus(start.jobId);
+            await sleep(800);
+        }
+
+        if (statusPayload.status === 'failed') {
+            throw new Error(statusPayload.message || 'Document conversion failed.');
+        }
+
+        setDocumentProgress(els, 100, 'Stage: completed (100%)');
+        if (els.docEtaTime) {
+            els.docEtaTime.textContent = '0s';
+        }
+        const { blob, filename } = await downloadDocumentConversionJob(start.jobId);
         triggerDownload(blob, filename);
         setStatus(els.docStatusArea, `Success: downloaded ${filename}`, 'ok');
 
-        if (debug && conversionId) {
-            const debugPayload = await getDocumentDebug(conversionId);
+        if (debug && statusPayload.conversionId) {
+            const debugPayload = await getDocumentDebug(statusPayload.conversionId);
             setDebugOutput(els, debugPayload.item || debugPayload);
         } else {
             setDebugOutput(els, null);
@@ -294,49 +530,6 @@ async function convertAudio(els) {
         els.audioConvertBtn.disabled = false;
         els.audioConvertBtn.classList.remove('loading');
     }
-}
-
-function runCalculation(els) {
-    const a = Number((els.calcA.value || '').trim());
-    const b = Number((els.calcB.value || '').trim());
-    const op = els.calcOp.value;
-
-    if (!Number.isFinite(a) || !Number.isFinite(b)) {
-        setStatus(els.calcStatusArea, 'Enter valid numeric values.', 'error');
-        els.calcResultArea.textContent = 'Result: -';
-        return;
-    }
-
-    let result;
-    if (op === '+') {
-        result = a + b;
-    } else if (op === '-') {
-        result = a - b;
-    } else if (op === '*') {
-        result = a * b;
-    } else if (op === '/') {
-        if (b === 0) {
-            setStatus(els.calcStatusArea, 'Division by zero is not allowed.', 'error');
-            els.calcResultArea.textContent = 'Result: -';
-            return;
-        }
-        result = a / b;
-    } else {
-        setStatus(els.calcStatusArea, 'Unsupported operation.', 'error');
-        els.calcResultArea.textContent = 'Result: -';
-        return;
-    }
-
-    els.calcResultArea.textContent = `Result: ${result}`;
-    setStatus(els.calcStatusArea, 'Calculation complete.', 'ok');
-}
-
-function clearCalculation(els) {
-    els.calcA.value = '';
-    els.calcB.value = '';
-    els.calcOp.value = '+';
-    els.calcResultArea.textContent = 'Result: -';
-    setStatus(els.calcStatusArea, 'Calculator cleared.', 'ok');
 }
 
 function renderStoredDocuments(els, items) {
@@ -437,17 +630,24 @@ export function initUI() {
     els.docConvertBtn.addEventListener('click', () => {
         void convertDocument(els, docOptions);
     });
+    els.docFile.addEventListener('change', () => {
+        const selected = els.docFile.files?.[0];
+        if (!selected) {
+            if (els.docSelectedFile) {
+                els.docSelectedFile.textContent = 'No file selected';
+            }
+            return;
+        }
+        if (els.docSelectedFile) {
+            const fileSizeMb = (selected.size / (1024 * 1024)).toFixed(2);
+            els.docSelectedFile.textContent = `${selected.name} (${fileSizeMb} MB)`;
+        }
+    });
     els.loConvertBtn.addEventListener('click', () => {
         void convertLibreOffice(els);
     });
     els.audioConvertBtn.addEventListener('click', () => {
         void convertAudio(els);
-    });
-    els.calcRunBtn.addEventListener('click', () => {
-        runCalculation(els);
-    });
-    els.calcClearBtn.addEventListener('click', () => {
-        clearCalculation(els);
     });
     els.storeDocBtn.addEventListener('click', () => {
         void storeCurrentDocument(els);
@@ -479,10 +679,24 @@ export function initUI() {
     }
 
     setStatus(els.docStatusArea, 'Ready. Start server and convert a document in browser.', 'ok');
+    setDocumentProgress(els, 0, 'Progress: idle');
+    setUploadProgress(els, 0);
+    if (els.docSelectedFile) {
+        els.docSelectedFile.textContent = 'No file selected';
+    }
+    if (els.docUploadSpeed) {
+        els.docUploadSpeed.textContent = '0 KB/s';
+    }
+    if (els.docElapsedTime) {
+        els.docElapsedTime.textContent = '0s';
+    }
+    if (els.docEtaTime) {
+        els.docEtaTime.textContent = '--';
+    }
     setStatus(els.loStatusArea, 'Ready. Upload a LibreOffice document to convert.', 'ok');
     setStatus(els.audioStatusArea, 'Ready. Upload audio to convert.', 'ok');
     setStatus(els.calcStatusArea, 'Ready. Enter values and run a calculation.', 'ok');
-    els.calcResultArea.textContent = 'Result: -';
+    initCalculator(els);
     setStatus(els.docLibraryStatusArea, 'Ready. Store documents for future users.', 'ok');
     setDebugOutput(els, null);
 
