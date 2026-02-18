@@ -27,6 +27,14 @@ export async function getDocumentFormats() {
     return response.json();
 }
 
+export async function getAudioFormats() {
+    const response = await fetch('/api/formats/audio');
+    if (!response.ok) {
+        throw new Error('Failed to load audio formats from server.');
+    }
+    return response.json();
+}
+
 export async function getDocumentOptions() {
     const response = await fetch('/api/formats/document/options');
     if (!response.ok) {
@@ -146,6 +154,37 @@ export async function convertDocumentOnline(file, outputFormat, options = {}) {
     const conversionId = response.headers.get('x-conversion-id') || '';
 
     return { blob, filename, conversionId };
+}
+
+export async function convertAudioOnline(file, outputFormat, options = {}) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('output_format', outputFormat);
+    if (options.bitrate) {
+        formData.append('bitrate', options.bitrate);
+    }
+
+    const response = await fetch('/api/audio/convert', {
+        method: 'POST',
+        body: formData
+    });
+
+    if (!response.ok) {
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (_error) {
+            payload = null;
+        }
+        throw new Error(getErrorMessage(payload, 'Audio conversion failed.'));
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = match ? match[1] : `converted.${outputFormat}`;
+
+    return { blob, filename };
 }
 
 export async function convertDataOnline(payload) {

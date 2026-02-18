@@ -1,0 +1,8 @@
+{
+  "storage": {
+    "data_dir": "data",
+    "snapshots_file": "data/snapshots.json",
+    "documents_dir": "data/documents",
+    "documents_index_file": "data/documents.json"
+  }
+}

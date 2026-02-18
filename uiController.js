@@ -1,7 +1,9 @@
 import {
+    convertAudioOnline,
     convertDocumentOnline,
     deleteStoredDocument,
     downloadStoredDocument,
+    getAudioFormats,
     getDocumentDebug,
     getDocumentFormats,
     getDocumentOptions,
@@ -20,6 +22,11 @@ function getElements() {
         docDebugOutput: document.getElementById('doc-debug-output'),
         docConvertBtn: document.getElementById('doc-convert-btn'),
         docStatusArea: document.getElementById('doc-status-area'),
+        audioFile: document.getElementById('audio-file'),
+        audioOutputFormat: document.getElementById('audio-output-format'),
+        audioBitrate: document.getElementById('audio-bitrate'),
+        audioConvertBtn: document.getElementById('audio-convert-btn'),
+        audioStatusArea: document.getElementById('audio-status-area'),
         storeDocFile: document.getElementById('store-doc-file'),
         storeDocName: document.getElementById('store-doc-name'),
         storedDocList: document.getElementById('stored-doc-list'),
@@ -195,6 +202,47 @@ async function convertDocument(els, docOptions) {
     }
 }
 
+async function loadAudioFormatOptions(els) {
+    const formats = await getAudioFormats();
+    if (!Array.isArray(formats.output) || formats.output.length === 0) {
+        return;
+    }
+
+    const current = els.audioOutputFormat.value;
+    const values = normalizeFormats(formats.output);
+    populateSelect(els.audioOutputFormat, values, current);
+}
+
+async function convertAudio(els) {
+    const file = els.audioFile.files?.[0];
+    if (!file) {
+        setStatus(els.audioStatusArea, 'Select an audio file before converting.', 'error');
+        return;
+    }
+
+    const outputFormat = els.audioOutputFormat.value;
+    if (!outputFormat) {
+        setStatus(els.audioStatusArea, 'Choose an output format.', 'error');
+        return;
+    }
+
+    const bitrate = (els.audioBitrate.value || '').trim();
+    els.audioConvertBtn.disabled = true;
+    els.audioConvertBtn.classList.add('loading');
+    setStatus(els.audioStatusArea, 'Converting audio on server...', 'ok');
+
+    try {
+        const { blob, filename } = await convertAudioOnline(file, outputFormat, { bitrate });
+        triggerDownload(blob, filename);
+        setStatus(els.audioStatusArea, `Success: downloaded ${filename}`, 'ok');
+    } catch (error) {
+        setStatus(els.audioStatusArea, `Error: ${error.message}`, 'error');
+    } finally {
+        els.audioConvertBtn.disabled = false;
+        els.audioConvertBtn.classList.remove('loading');
+    }
+}
+
 function renderStoredDocuments(els, items) {
     const selected = els.storedDocList.value;
     els.storedDocList.innerHTML = '';
@@ -293,6 +341,9 @@ export function initUI() {
     els.docConvertBtn.addEventListener('click', () => {
         void convertDocument(els, docOptions);
     });
+    els.audioConvertBtn.addEventListener('click', () => {
+        void convertAudio(els);
+    });
     els.storeDocBtn.addEventListener('click', () => {
         void storeCurrentDocument(els);
     });
@@ -323,6 +374,7 @@ export function initUI() {
     }
 
     setStatus(els.docStatusArea, 'Ready. Start server and convert a document in browser.', 'ok');
+    setStatus(els.audioStatusArea, 'Ready. Upload audio to convert.', 'ok');
     setStatus(els.docLibraryStatusArea, 'Ready. Store documents for future users.', 'ok');
     setDebugOutput(els, null);
 
@@ -333,6 +385,10 @@ export function initUI() {
         })
         .catch((error) => {
             setStatus(els.docStatusArea, `Warning: ${error.message}`, 'error');
+        });
+    void loadAudioFormatOptions(els)
+        .catch((error) => {
+            setStatus(els.audioStatusArea, `Warning: ${error.message}`, 'error');
         });
     void refreshStoredDocuments(els, true);
 

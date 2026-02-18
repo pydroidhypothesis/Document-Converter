@@ -17,10 +17,51 @@ from document_converter import ConversionToolkit
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-DATA_STORE_FILE = DATA_DIR / "snapshots.json"
-DOCUMENT_STORE_DIR = DATA_DIR / "documents"
-DOCUMENT_STORE_INDEX = DATA_DIR / "documents.json"
+STORAGE_CONFIG_FILE = BASE_DIR / "config" / "storage_config.json"
+
+
+def _resolve_path(path_str: str, default: Path) -> Path:
+    if not path_str:
+        return default
+    raw = Path(path_str).expanduser()
+    return raw if raw.is_absolute() else (BASE_DIR / raw).resolve()
+
+
+def _load_storage_config():
+    defaults = {
+        "data_dir": "data",
+        "snapshots_file": "data/snapshots.json",
+        "documents_dir": "data/documents",
+        "documents_index_file": "data/documents.json"
+    }
+    if not STORAGE_CONFIG_FILE.exists():
+        return defaults
+
+    try:
+        payload = json.loads(STORAGE_CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return defaults
+
+    if not isinstance(payload, dict):
+        return defaults
+
+    storage = payload.get("storage", payload)
+    if not isinstance(storage, dict):
+        return defaults
+
+    merged = defaults.copy()
+    for key in defaults:
+        value = storage.get(key)
+        if isinstance(value, str) and value.strip():
+            merged[key] = value.strip()
+    return merged
+
+
+_storage = _load_storage_config()
+DATA_DIR = _resolve_path(_storage["data_dir"], BASE_DIR / "data")
+DATA_STORE_FILE = _resolve_path(_storage["snapshots_file"], DATA_DIR / "snapshots.json")
+DOCUMENT_STORE_DIR = _resolve_path(_storage["documents_dir"], DATA_DIR / "documents")
+DOCUMENT_STORE_INDEX = _resolve_path(_storage["documents_index_file"], DATA_DIR / "documents.json")
 DOCUMENT_TYPE_INPUTS = {
     "text": {".txt", ".rtf", ".doc", ".docx", ".odt", ".ott", ".sxw", ".html", ".htm", ".xml", ".epub", ".fodt"},
     "spreadsheet": {".xls", ".xlsx", ".ods", ".ots", ".csv", ".fods"},
@@ -64,6 +105,11 @@ def health():
 @app.get("/api/formats/document")
 def document_formats():
     return jsonify(toolkit.document_converter.supported_formats)
+
+
+@app.get("/api/formats/audio")
+def audio_formats():
+    return jsonify(toolkit.audio_converter.supported_formats)
 
 
 def _detect_document_type(ext: str):
@@ -289,6 +335,69 @@ def convert_document():
     response.headers["X-Document-Type"] = effective_type
     response.headers["X-Output-Profile"] = output_profile
     return response
+
+
+@app.post("/api/audio/convert")
+def convert_audio():
+    if "file" not in request.files:
+        return jsonify({"success": False, "message": "Missing uploaded file"}), 400
+
+    source = request.files["file"]
+    output_format = (request.form.get("output_format") or "").strip().lower()
+    bitrate = (request.form.get("bitrate") or "").strip()
+
+    if not output_format:
+        return jsonify({"success": False, "message": "Missing output format"}), 400
+
+    if not output_format.startswith("."):
+        output_format = f".{output_format}"
+
+    if source.filename is None or source.filename.strip() == "":
+        return jsonify({"success": False, "message": "Invalid source filename"}), 400
+
+    safe_name = secure_filename(source.filename)
+    if not safe_name:
+        safe_name = "audio"
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="audioconvert_"))
+    input_path = temp_dir / safe_name
+    source.save(input_path)
+    output_path = temp_dir / f"{input_path.stem}{output_format}"
+
+    kwargs = {"output_file": output_path}
+    if bitrate:
+        kwargs["bitrate"] = bitrate
+
+    try:
+        result = toolkit.audio_converter.convert(
+            input_file=input_path,
+            output_format=output_format,
+            **kwargs
+        )
+    except Exception as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+
+    if not result.get("success"):
+        return jsonify(result), 400
+
+    @after_this_request
+    def cleanup(_response):
+        for path in temp_dir.glob("*"):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        try:
+            temp_dir.rmdir()
+        except OSError:
+            pass
+        return _response
+
+    return send_file(
+        result["output_file"],
+        as_attachment=True,
+        download_name=Path(result["output_file"]).name
+    )
 
 
 def _parse_data(text: str, data_format: str):
