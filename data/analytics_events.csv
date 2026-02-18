@@ -1,0 +1,9 @@
+timestamp,eventType,ip,userAgent,source,documentType,inputFormat,outputFormat,outputProfile,success,durationMs,notes
+2026-02-18T17:02:25.472905+00:00,visit,192.168.100.143,Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0,,,,,,false,,homepage
+2026-02-18T17:04:47.041533+00:00,visit,192.168.100.143,Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0,,,,,,false,,homepage
+2026-02-18T17:06:52.781862+00:00,visit,192.168.100.143,Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0,,,,,,false,,homepage
+2026-02-18T17:07:28.189695+00:00,visit,192.168.100.143,Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0,,,,,,false,,homepage
+2026-02-18T17:08:16.962301+00:00,visit,192.168.100.143,Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0,,,,,,false,,homepage
+2026-02-18T17:08:20.743981+00:00,visit,192.168.100.143,Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0,,,,,,false,,homepage
+2026-02-18T17:08:37.854295+00:00,visit,192.168.100.143,Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0,,,,,,false,,homepage
+2026-02-18T17:09:23.207923+00:00,visit,192.168.100.143,Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0,,,,,,false,,homepage

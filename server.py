@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import os
+import hashlib
 import tempfile
 import uuid
 import time
@@ -13,6 +14,7 @@ import shutil
 import secrets
 import importlib
 import importlib.metadata
+import platform
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,6 +24,7 @@ from werkzeug.utils import secure_filename
 from document_converter import ConversionToolkit
 from PyPDF2 import PdfReader, PdfWriter
 from PyPDF2.generic import DecodedStreamObject, NameObject
+from src.processors.batch_processor import BatchProcessor
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -46,7 +49,8 @@ def _load_storage_config():
         "snapshots_file": "data/snapshots.json",
         "documents_dir": "data/documents",
         "documents_index_file": "data/documents.json",
-        "analytics_file": "data/analytics_events.csv"
+        "analytics_file": "data/analytics_events.csv",
+        "api_keys_file": "data/api_keys.json"
     }
     if not STORAGE_CONFIG_FILE.exists():
         return defaults
@@ -98,6 +102,7 @@ DATA_STORE_FILE = _resolve_path(_storage["snapshots_file"], DATA_DIR / "snapshot
 DOCUMENT_STORE_DIR = _resolve_path(_storage["documents_dir"], DATA_DIR / "documents")
 DOCUMENT_STORE_INDEX = _resolve_path(_storage["documents_index_file"], DATA_DIR / "documents.json")
 ANALYTICS_STORE_FILE = _resolve_path(_storage["analytics_file"], DATA_DIR / "analytics_events.csv")
+API_KEYS_STORE_FILE = _resolve_path(_storage["api_keys_file"], DATA_DIR / "api_keys.json")
 ANALYTICS_LOCK = threading.Lock()
 DOCUMENT_TYPE_INPUTS = {
     "text": {".txt", ".rtf", ".doc", ".docx", ".odt", ".ott", ".sxw", ".html", ".htm", ".xml", ".epub", ".fodt"},
@@ -134,10 +139,21 @@ app = Flask(
     static_url_path="/static"
 )
 toolkit = ConversionToolkit()
+BATCH_PROCESSOR = BatchProcessor(
+    worker_count=max(1, int(os.environ.get("DOC_CONVERT_BATCH_WORKERS", "2"))),
+    job_handler=lambda job_id: _run_document_conversion_job(job_id),
+    name="document-conversion"
+)
 
 
 @app.get("/")
 def index():
+    _track_analytics_event(
+        "visit",
+        ip=_request_client_ip(),
+        userAgent=request.headers.get("User-Agent", ""),
+        notes="homepage"
+    )
     return render_template("index.html")
 
 
@@ -219,7 +235,14 @@ def _run_document_conversion_job(job_id: str):
     conversion_id = uuid.uuid4().hex
 
     try:
-        _update_job(job_id, status="running", progress=15, stage="validating", message="Validating input file...")
+        _update_job(
+            job_id,
+            status="running",
+            progress=15,
+            stage="validating",
+            message="Validating input file...",
+            queuePosition=None
+        )
         detected_type = _detect_document_type(input_path.suffix.lower())
         if not detected_type:
             _update_job(
@@ -300,6 +323,19 @@ def _run_document_conversion_job(job_id: str):
         _store_debug_entry(debug_entry)
 
         if not result.get("success"):
+            _track_analytics_event(
+                "document_conversion_async",
+                ip=job.get("requestIp", ""),
+                userAgent=job.get("userAgent", ""),
+                source="async",
+                documentType=effective_type,
+                inputFormat=input_path.suffix.lower(),
+                outputFormat=output_format,
+                outputProfile=output_profile,
+                success=False,
+                durationMs=round((time.perf_counter() - started) * 1000, 2),
+                notes=result.get("message", "Document conversion failed")
+            )
             _update_job(
                 job_id,
                 status="failed",
@@ -332,7 +368,33 @@ def _run_document_conversion_job(job_id: str):
             outputFile=str(output_path),
             outputFilename=output_path.name
         )
+        _track_analytics_event(
+            "document_conversion_async",
+            ip=job.get("requestIp", ""),
+            userAgent=job.get("userAgent", ""),
+            source="async",
+            documentType=effective_type,
+            inputFormat=input_path.suffix.lower(),
+            outputFormat=output_format,
+            outputProfile=output_profile,
+            success=True,
+            durationMs=round((time.perf_counter() - started) * 1000, 2),
+            notes="Conversion complete"
+        )
     except Exception as exc:
+        _track_analytics_event(
+            "document_conversion_async",
+            ip=job.get("requestIp", ""),
+            userAgent=job.get("userAgent", ""),
+            source="async",
+            documentType=selected_type,
+            inputFormat=input_path.suffix.lower(),
+            outputFormat=output_format,
+            outputProfile=output_profile,
+            success=False,
+            durationMs=round((time.perf_counter() - started) * 1000, 2),
+            notes=f"Exception: {exc}"
+        )
         _update_job(
             job_id,
             status="failed",
@@ -341,6 +403,9 @@ def _run_document_conversion_job(job_id: str):
             message=f"Conversion failed: {exc}",
             error=str(exc)
         )
+
+
+BATCH_PROCESSOR.start()
 
 
 @app.get("/api/formats/document/options")
@@ -386,7 +451,9 @@ def get_storage_config():
             "dataDir": str(DATA_DIR.resolve()),
             "snapshotsFile": str(DATA_STORE_FILE.resolve()),
             "documentsDir": str(DOCUMENT_STORE_DIR.resolve()),
-            "documentsIndexFile": str(DOCUMENT_STORE_INDEX.resolve())
+            "documentsIndexFile": str(DOCUMENT_STORE_INDEX.resolve()),
+            "analyticsFile": str(ANALYTICS_STORE_FILE.resolve()),
+            "apiKeysFile": str(API_KEYS_STORE_FILE.resolve())
         },
         "roots": [
             {"key": "documents", "label": "Documents", "path": str(roots["documents"]), "exists": roots["documents"].exists()},
@@ -411,6 +478,189 @@ def get_storage_tree():
 
     payload["rootKey"] = root_key
     return jsonify(payload)
+
+
+@app.get("/api/admin/analytics/summary")
+def get_admin_analytics_summary():
+    denial = _require_admin()
+    if denial is not None:
+        return denial
+
+    rows = _load_analytics_rows()
+    summary = _summarize_analytics(rows)
+    summary["analyticsFile"] = str(ANALYTICS_STORE_FILE.resolve())
+    summary["events"] = len(rows)
+    summary["generatedAt"] = datetime.now(timezone.utc).isoformat()
+    return jsonify(summary)
+
+
+@app.get("/api/admin/diagnostics")
+def get_admin_diagnostics():
+    denial = _require_admin()
+    if denial is not None:
+        return denial
+
+    now = datetime.now(timezone.utc)
+    deps = [
+        _check_dependency("flask", "Flask"),
+        _check_dependency("werkzeug", "Werkzeug"),
+        _check_dependency("PyPDF2", "PyPDF2"),
+        _check_dependency("PIL", "Pillow"),
+        _check_dependency("pydub", "pydub"),
+        _check_dependency("imageio", "imageio"),
+        _check_dependency("cv2", "opencv-python"),
+    ]
+    binaries = []
+    for name in ["soffice", "ffmpeg", "7z"]:
+        path = shutil.which(name)
+        binaries.append({
+            "name": name,
+            "available": bool(path),
+            "path": path or ""
+        })
+
+    storage_checks = []
+    for label, path in {
+        "dataDir": DATA_DIR,
+        "documentsDir": DOCUMENT_STORE_DIR,
+        "snapshotsDir": DATA_STORE_FILE.parent,
+        "analyticsFileDir": ANALYTICS_STORE_FILE.parent
+    }.items():
+        resolved = path.resolve()
+        storage_checks.append({
+            "name": label,
+            "path": str(resolved),
+            "exists": resolved.exists(),
+            "writable": os.access(resolved, os.W_OK) if resolved.exists() else False,
+            "disk": _safe_disk_usage(resolved)
+        })
+
+    analytics_rows = _load_analytics_rows()
+    analytics_summary = _summarize_analytics(analytics_rows)
+    duration_summary = _duration_stats(analytics_rows)
+    failed_debug = _recent_failed_debug_entries(limit=20)
+    api_keys = _load_api_keys()
+    processor_snapshot = BATCH_PROCESSOR.snapshot()
+    with CONVERSION_JOBS_LOCK:
+        queued_jobs = [job for job in CONVERSION_JOBS.values() if (job.get("status") or "").lower() == "queued"]
+
+    return jsonify({
+        "server": {
+            "status": "running",
+            "startedAt": APP_STARTED_AT.isoformat(),
+            "uptimeSeconds": int((now - APP_STARTED_AT).total_seconds()),
+            "now": now.isoformat(),
+            "pid": os.getpid(),
+            "pythonVersion": platform.python_version(),
+            "platform": platform.platform(),
+            "hostname": platform.node()
+        },
+        "jobs": _job_stats(),
+        "queue": {
+            "workers": processor_snapshot.get("workers", 0),
+            "running": processor_snapshot.get("running", 0),
+            "queued": processor_snapshot.get("queued", 0),
+            "queuedJobIds": [job.get("jobId") for job in queued_jobs[:50]]
+        },
+        "dependencies": deps,
+        "binaries": binaries,
+        "storage": storage_checks,
+        "analytics": {
+            "events": len(analytics_rows),
+            "file": str(ANALYTICS_STORE_FILE.resolve()),
+            "summary": analytics_summary,
+            "durations": duration_summary
+        },
+        "apiKeys": {
+            "total": len(api_keys),
+            "active": sum(1 for item in api_keys if item.get("active")),
+            "inactive": sum(1 for item in api_keys if not item.get("active")),
+            "recent": [
+                {
+                    "id": item.get("id"),
+                    "name": item.get("name"),
+                    "email": item.get("email"),
+                    "createdAt": item.get("createdAt"),
+                    "active": bool(item.get("active"))
+                }
+                for item in sorted(api_keys, key=lambda x: x.get("createdAt", ""), reverse=True)[:20]
+            ]
+        },
+        "recentFailures": failed_debug
+    })
+
+
+@app.get("/api/admin/analytics/export")
+def export_admin_analytics():
+    denial = _require_admin()
+    if denial is not None:
+        return denial
+
+    _ensure_analytics_store()
+    if not ANALYTICS_STORE_FILE.exists():
+        return jsonify({"message": "Analytics file not found"}), 404
+
+    return send_file(
+        ANALYTICS_STORE_FILE,
+        as_attachment=True,
+        download_name=ANALYTICS_STORE_FILE.name,
+        mimetype="text/csv"
+    )
+
+
+@app.post("/api/apikey/request")
+def request_api_key():
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name", "")).strip()
+    email = str(payload.get("email", "")).strip().lower()
+    purpose = str(payload.get("purpose", "")).strip()
+
+    if not name:
+        return jsonify({"success": False, "message": "Name is required."}), 400
+    if not email or "@" not in email:
+        return jsonify({"success": False, "message": "Valid email is required."}), 400
+
+    raw_key = f"dcp_{uuid.uuid4().hex}{uuid.uuid4().hex[:8]}"
+    key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+    key_id = uuid.uuid4().hex
+
+    record = {
+        "id": key_id,
+        "name": name,
+        "email": email,
+        "purpose": purpose,
+        "prefix": raw_key[:12],
+        "suffix": raw_key[-4:],
+        "keyHash": key_hash,
+        "active": True,
+        "createdAt": datetime.now(timezone.utc).isoformat()
+    }
+    items = _load_api_keys()
+    items.append(record)
+    _save_api_keys(items)
+
+    _track_analytics_event(
+        "api_key_issued",
+        ip=_request_client_ip(),
+        userAgent=request.headers.get("User-Agent", ""),
+        source="api",
+        success=True,
+        notes=f"api-key:{key_id}"
+    )
+
+    return jsonify({
+        "success": True,
+        "item": {
+            "id": key_id,
+            "name": name,
+            "email": email,
+            "createdAt": record["createdAt"],
+            "prefix": record["prefix"],
+            "suffix": record["suffix"]
+        },
+        "apiKey": raw_key,
+        "message": "API key generated. Save it now; it will not be shown again."
+    }), 201
 
 
 @app.post("/api/document/store")
@@ -510,6 +760,8 @@ def convert_document():
     source.save(input_path)
     conversion_id = uuid.uuid4().hex
     started = time.perf_counter()
+    client_ip = _request_client_ip()
+    user_agent = request.headers.get("User-Agent", "")
 
     detected_type = _detect_document_type(input_path.suffix.lower())
     if not detected_type:
@@ -569,6 +821,19 @@ def convert_document():
     _store_debug_entry(debug_entry)
 
     if not result.get("success"):
+        _track_analytics_event(
+            "document_conversion_sync",
+            ip=client_ip,
+            userAgent=user_agent,
+            source="sync",
+            documentType=effective_type,
+            inputFormat=input_path.suffix.lower(),
+            outputFormat=output_format,
+            outputProfile=output_profile,
+            success=False,
+            durationMs=round((time.perf_counter() - started) * 1000, 2),
+            notes=result.get("message", "Document conversion failed")
+        )
         return jsonify({**result, "conversionId": conversion_id}), 400
 
     @after_this_request
@@ -588,6 +853,19 @@ def convert_document():
         result["output_file"],
         as_attachment=True,
         download_name=Path(result["output_file"]).name
+    )
+    _track_analytics_event(
+        "document_conversion_sync",
+        ip=client_ip,
+        userAgent=user_agent,
+        source="sync",
+        documentType=effective_type,
+        inputFormat=input_path.suffix.lower(),
+        outputFormat=output_format,
+        outputProfile=output_profile,
+        success=True,
+        durationMs=round((time.perf_counter() - started) * 1000, 2),
+        notes="Conversion complete"
     )
     response.headers["X-Conversion-Id"] = conversion_id
     response.headers["X-Document-Type"] = effective_type
@@ -645,18 +923,27 @@ def start_document_conversion():
             "outputFile": None,
             "outputFilename": None,
             "conversionId": None,
-            "error": None
+            "error": None,
+            "requestIp": _request_client_ip(),
+            "userAgent": request.headers.get("User-Agent", ""),
+            "queuePosition": None
         }
 
-    thread = threading.Thread(target=_run_document_conversion_job, args=(job_id,), daemon=True)
-    thread.start()
+    queue_position = BATCH_PROCESSOR.submit(job_id)
+    _update_job(
+        job_id,
+        queuePosition=queue_position,
+        stage="queued",
+        message=f"Queued at position {queue_position}"
+    )
 
     return jsonify({
         "jobId": job_id,
         "status": "queued",
         "progress": 5,
         "stage": "queued",
-        "message": "Job started"
+        "message": f"Job queued at position {queue_position}",
+        "queuePosition": queue_position
     }), 202
 
 
@@ -666,15 +953,32 @@ def get_document_conversion_status(job_id: str):
     if not job:
         return jsonify({"message": "Job not found"}), 404
 
+    queue_position = None
+    message = job.get("message", "")
+    if job.get("status") == "queued":
+        queue_position = BATCH_PROCESSOR.get_position(job_id)
+        if queue_position is not None:
+            message = f"Queued at position {queue_position}"
+            _update_job(job_id, queuePosition=queue_position, message=message)
+
     return jsonify({
         "jobId": job["jobId"],
         "status": job["status"],
         "progress": job.get("progress", 0),
         "stage": job.get("stage", ""),
-        "message": job.get("message", ""),
+        "message": message,
+        "queuePosition": queue_position if queue_position is not None else job.get("queuePosition"),
         "outputFilename": job.get("outputFilename"),
         "conversionId": job.get("conversionId"),
         "error": job.get("error")
+    })
+
+
+@app.get("/api/document/convert/queue")
+def get_document_conversion_queue():
+    snapshot = BATCH_PROCESSOR.snapshot()
+    return jsonify({
+        "queue": snapshot
     })
 
 
@@ -960,6 +1264,20 @@ def _save_stored_documents(items):
     DOCUMENT_STORE_INDEX.write_text(json.dumps(items, indent=2), encoding="utf-8")
 
 
+def _load_api_keys():
+    if not API_KEYS_STORE_FILE.exists():
+        return []
+    try:
+        return json.loads(API_KEYS_STORE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_api_keys(items):
+    API_KEYS_STORE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    API_KEYS_STORE_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
+
+
 def _bytes_to_readable(num_bytes: int) -> str:
     size = float(num_bytes)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
@@ -1013,7 +1331,57 @@ def _job_stats():
         else:
             counts["other"] += 1
     counts["total"] = len(jobs)
+    counts["processor"] = BATCH_PROCESSOR.snapshot()
     return counts
+
+
+def _safe_disk_usage(path: Path):
+    try:
+        usage = shutil.disk_usage(path)
+        return {
+            "totalBytes": int(usage.total),
+            "usedBytes": int(usage.used),
+            "freeBytes": int(usage.free),
+            "totalReadable": _bytes_to_readable(int(usage.total)),
+            "usedReadable": _bytes_to_readable(int(usage.used)),
+            "freeReadable": _bytes_to_readable(int(usage.free))
+        }
+    except Exception:
+        return {}
+
+
+def _recent_failed_debug_entries(limit: int = 20):
+    failed = [item for item in reversed(DEBUG_HISTORY) if not item.get("success")]
+    return failed[:limit]
+
+
+def _duration_stats(rows):
+    values = []
+    for row in rows:
+        event_type = (row.get("eventType") or "").strip()
+        if not event_type.startswith("document_conversion"):
+            continue
+        raw = (row.get("durationMs") or "").strip()
+        try:
+            value = float(raw)
+        except Exception:
+            continue
+        if value >= 0:
+            values.append(value)
+
+    if not values:
+        return {"count": 0, "avgMs": 0, "p95Ms": 0, "maxMs": 0}
+
+    values.sort()
+    count = len(values)
+    avg = sum(values) / count
+    p95_index = max(0, min(count - 1, int(round((count - 1) * 0.95))))
+    return {
+        "count": count,
+        "avgMs": round(avg, 2),
+        "p95Ms": round(values[p95_index], 2),
+        "maxMs": round(values[-1], 2)
+    }
 
 
 def _request_client_ip():

@@ -239,6 +239,43 @@
     letter-spacing: 0.2px;
 }
 
+.upload-dots-track {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+    margin-bottom: 6px;
+    min-height: 14px;
+}
+
+.upload-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.upload-dot.is-filled {
+    transform: scale(1.05);
+}
+
+.upload-dot.level-low.is-filled {
+    background: #ef4444;
+}
+
+.upload-dot.level-mid.is-filled {
+    background: #f59e0b;
+}
+
+.upload-dot.level-high.is-filled {
+    background: #22c55e;
+}
+
+.upload-dot.level-full.is-filled {
+    background: #2563eb;
+}
+
 @media (max-width: 1100px) {
     .control-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

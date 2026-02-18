@@ -116,6 +116,42 @@ export async function getStorageTree(root = 'documents', path = '') {
     return response.json();
 }
 
+export async function getAdminDiagnostics(token) {
+    const response = await fetch('/api/admin/diagnostics', {
+        headers: {
+            'X-Admin-Token': token || ''
+        }
+    });
+    if (!response.ok) {
+        let body = null;
+        try {
+            body = await response.json();
+        } catch (_error) {
+            body = null;
+        }
+        throw new Error(getErrorMessage(body, 'Failed to load admin diagnostics.'));
+    }
+    return response.json();
+}
+
+export async function getAdminAnalyticsSummary(token) {
+    const response = await fetch('/api/admin/analytics/summary', {
+        headers: {
+            'X-Admin-Token': token || ''
+        }
+    });
+    if (!response.ok) {
+        let body = null;
+        try {
+            body = await response.json();
+        } catch (_error) {
+            body = null;
+        }
+        throw new Error(getErrorMessage(body, 'Failed to load analytics summary.'));
+    }
+    return response.json();
+}
+
 export async function storeDocument(file, name = '') {
     const formData = new FormData();
     formData.append('file', file);

@@ -1,4 +1,6 @@
 import {
+    getAdminAnalyticsSummary,
+    getAdminDiagnostics,
     convertAudioOnline,
     convertLibreOfficeOnline,
     deleteStoredDocument,
@@ -22,6 +24,7 @@ import {
 function getElements() {
     return {
         docFile: document.getElementById('doc-file'),
+        docPasteBtn: document.getElementById('doc-paste-btn'),
         docType: document.getElementById('doc-type'),
         docOutputProfile: document.getElementById('doc-output-profile'),
         docOutputFormat: document.getElementById('doc-output-format'),
@@ -30,10 +33,12 @@ function getElements() {
         docConvertBtn: document.getElementById('doc-convert-btn'),
         docProgressText: document.getElementById('doc-progress-text'),
         docUploadBar: document.getElementById('doc-upload-bar'),
+        docUploadDots: document.getElementById('doc-upload-dots'),
         docProgressBar: document.getElementById('doc-progress-bar'),
         docUploadTextMeter: document.getElementById('doc-upload-textmeter'),
         docConversionTextMeter: document.getElementById('doc-conversion-textmeter'),
         docSelectedFile: document.getElementById('doc-selected-file'),
+        docFileDetails: document.getElementById('doc-file-details'),
         docUploadSpeed: document.getElementById('doc-upload-speed'),
         docElapsedTime: document.getElementById('doc-elapsed-time'),
         docEtaTime: document.getElementById('doc-eta-time'),
@@ -56,6 +61,10 @@ function getElements() {
         pdfMode: document.getElementById('pdf-mode'),
         pdfProcessBtn: document.getElementById('pdf-process-btn'),
         pdfStatusArea: document.getElementById('pdf-status-area'),
+        adminToken: document.getElementById('admin-token'),
+        adminDiagnosticsRunBtn: document.getElementById('admin-diagnostics-run-btn'),
+        adminDiagnosticsStatusArea: document.getElementById('admin-diagnostics-status-area'),
+        adminDiagnosticsOutput: document.getElementById('admin-diagnostics-output'),
         calcRoot: document.getElementById('calc-root'),
         calcStatusArea: document.getElementById('calc-status-area'),
         storeDocFile: document.getElementById('store-doc-file'),
@@ -116,9 +125,43 @@ function setUploadProgress(els, value) {
     if (els.docUploadBar) {
         els.docUploadBar.style.width = `${safeValue}%`;
     }
+    updateUploadDots(els, safeValue);
     if (els.docUploadTextMeter) {
         els.docUploadTextMeter.textContent = formatHashMeter(safeValue);
     }
+}
+
+function ensureUploadDots(els, count = 24) {
+    if (!els.docUploadDots) {
+        return;
+    }
+    if (els.docUploadDots.childElementCount >= count) {
+        return;
+    }
+    els.docUploadDots.innerHTML = '';
+    for (let index = 0; index < count; index += 1) {
+        const dot = document.createElement('span');
+        dot.className = 'upload-dot';
+        els.docUploadDots.appendChild(dot);
+    }
+}
+
+function updateUploadDots(els, percent) {
+    if (!els.docUploadDots) {
+        return;
+    }
+    ensureUploadDots(els);
+    const dots = [...els.docUploadDots.children];
+    if (dots.length === 0) {
+        return;
+    }
+
+    const filled = Math.round((Math.max(0, Math.min(100, percent)) / 100) * dots.length);
+    const levelClass = percent >= 100 ? 'level-full' : percent >= 70 ? 'level-high' : percent >= 35 ? 'level-mid' : 'level-low';
+
+    dots.forEach((dot, index) => {
+        dot.className = `upload-dot ${index < filled ? `is-filled ${levelClass}` : ''}`.trim();
+    });
 }
 
 function formatBytesPerSecond(value) {
@@ -153,6 +196,41 @@ function formatSelectedFileLabel(file) {
     }
     const fileSizeMb = (file.size / (1024 * 1024)).toFixed(2);
     return `${file.name} (${fileSizeMb} MB)`;
+}
+
+function formatTimestamp(value) {
+    if (!Number.isFinite(value) || value <= 0) {
+        return '-';
+    }
+    return new Date(value).toLocaleString();
+}
+
+function formatFileDetails(file, selectedAt, source = 'picker') {
+    if (!file) {
+        return 'File details will appear here.';
+    }
+
+    const sourceLabel = source === 'paste' ? 'Clipboard Paste' : source === 'drop' ? 'Drag & Drop' : 'File Picker';
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+    const modified = Number.isFinite(file.lastModified) ? formatTimestamp(file.lastModified) : '-';
+    const pickedAt = formatTimestamp(selectedAt);
+    const mime = file.type || 'unknown';
+    return `Source: ${sourceLabel} | Size: ${sizeMb} MB (${file.size} bytes) | Type: ${mime} | Last Modified: ${modified} | Selected At: ${pickedAt}`;
+}
+
+function inferFileExtensionFromMime(mime) {
+    const map = {
+        'application/pdf': 'pdf',
+        'application/msword': 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+        'application/vnd.ms-excel': 'xls',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+        'application/vnd.ms-powerpoint': 'ppt',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+        'text/plain': 'txt',
+        'text/csv': 'csv'
+    };
+    return map[mime] || 'bin';
 }
 
 function getProfileMeta(profile) {
@@ -472,10 +550,13 @@ async function convertDocument(els, docOptions, file) {
             }
 
             const progress = statusPayload.progress || 0;
+            const queueSuffix = statusPayload.status === 'queued' && statusPayload.queuePosition
+                ? ` | Queue: #${statusPayload.queuePosition}`
+                : '';
             setDocumentProgress(
                 els,
                 progress,
-                `Stage: ${statusPayload.stage || 'processing'} (${progress}%) - ${profileMeta.shortLabel}`
+                `Stage: ${statusPayload.stage || 'processing'} (${progress}%) - ${profileMeta.shortLabel}${queueSuffix}`
             );
             if (els.docElapsedTime) {
                 const elapsedMs = Date.now() - startedAt;
@@ -629,6 +710,41 @@ async function processPdf(els) {
     } finally {
         els.pdfProcessBtn.disabled = false;
         els.pdfProcessBtn.classList.remove('loading');
+    }
+}
+
+async function runAdminDiagnostics(els) {
+    const token = (els.adminToken?.value || '').trim();
+    if (!token) {
+        setStatus(els.adminDiagnosticsStatusArea, 'Enter admin token first.', 'error');
+        return;
+    }
+
+    els.adminDiagnosticsRunBtn.disabled = true;
+    els.adminDiagnosticsRunBtn.classList.add('loading');
+    setStatus(els.adminDiagnosticsStatusArea, 'Running admin diagnostics...', 'ok');
+
+    try {
+        const [diagnostics, analytics] = await Promise.all([
+            getAdminDiagnostics(token),
+            getAdminAnalyticsSummary(token)
+        ]);
+        const payload = {
+            diagnostics,
+            analytics
+        };
+        if (els.adminDiagnosticsOutput) {
+            els.adminDiagnosticsOutput.textContent = JSON.stringify(payload, null, 2);
+        }
+        setStatus(els.adminDiagnosticsStatusArea, 'Admin diagnostics completed.', 'ok');
+    } catch (error) {
+        if (els.adminDiagnosticsOutput) {
+            els.adminDiagnosticsOutput.textContent = '';
+        }
+        setStatus(els.adminDiagnosticsStatusArea, `Error: ${error.message}`, 'error');
+    } finally {
+        els.adminDiagnosticsRunBtn.disabled = false;
+        els.adminDiagnosticsRunBtn.classList.remove('loading');
     }
 }
 
@@ -852,6 +968,8 @@ export function initUI() {
         outputsByTypeAndProfile: {}
     };
     let selectedDocumentFile = null;
+    let selectedDocumentAt = 0;
+    let selectedDocumentSource = 'picker';
     const storageBrowserState = {
         root: 'documents',
         path: ''
@@ -859,9 +977,14 @@ export function initUI() {
 
     const updateSelectedDocument = (file, source = 'picker') => {
         selectedDocumentFile = file || null;
+        selectedDocumentSource = source;
+        selectedDocumentAt = selectedDocumentFile ? Date.now() : 0;
 
         if (els.docSelectedFile) {
             els.docSelectedFile.textContent = formatSelectedFileLabel(selectedDocumentFile);
+        }
+        if (els.docFileDetails) {
+            els.docFileDetails.textContent = formatFileDetails(selectedDocumentFile, selectedDocumentAt, selectedDocumentSource);
         }
         if (els.docPasteZone) {
             els.docPasteZone.classList.toggle('is-has-file', Boolean(selectedDocumentFile));
@@ -893,6 +1016,46 @@ export function initUI() {
     els.docFile.addEventListener('change', () => {
         updateSelectedDocument(els.docFile.files?.[0] || null, 'picker');
     });
+    if (els.docPasteBtn) {
+        els.docPasteBtn.addEventListener('click', async () => {
+            if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+                setStatus(els.docStatusArea, 'Clipboard read API is not available in this browser. Use Ctrl+V in the paste zone.', 'error');
+                return;
+            }
+            try {
+                const items = await navigator.clipboard.read();
+                let pastedFile = null;
+                for (const item of items) {
+                    for (const mimeType of item.types || []) {
+                        const blob = await item.getType(mimeType);
+                        if (!blob || blob.size <= 0) {
+                            continue;
+                        }
+                        const ext = inferFileExtensionFromMime(blob.type);
+                        const filename = `clipboard_${Date.now()}.${ext}`;
+                        pastedFile = new File([blob], filename, {
+                            type: blob.type || 'application/octet-stream',
+                            lastModified: Date.now()
+                        });
+                        break;
+                    }
+                    if (pastedFile) {
+                        break;
+                    }
+                }
+
+                if (!pastedFile) {
+                    setStatus(els.docStatusArea, 'No file found in clipboard. Copy a file first, then paste.', 'error');
+                    return;
+                }
+
+                updateSelectedDocument(pastedFile, 'paste');
+                setStatus(els.docStatusArea, 'Clipboard file pasted successfully.', 'ok');
+            } catch (error) {
+                setStatus(els.docStatusArea, `Clipboard paste failed: ${error.message}`, 'error');
+            }
+        });
+    }
 
     if (els.docPasteZone) {
         els.docPasteZone.addEventListener('click', () => {
@@ -955,6 +1118,11 @@ export function initUI() {
     els.pdfProcessBtn.addEventListener('click', () => {
         void processPdf(els);
     });
+    if (els.adminDiagnosticsRunBtn) {
+        els.adminDiagnosticsRunBtn.addEventListener('click', () => {
+            void runAdminDiagnostics(els);
+        });
+    }
     els.storeDocBtn.addEventListener('click', () => {
         void storeCurrentDocument(els);
     });
@@ -1001,6 +1169,7 @@ export function initUI() {
     setStatus(els.docStatusArea, 'Ready. Start server and convert a document in browser.', 'ok');
     updateDocumentVersionIndicator(els, els.docOutputProfile.value || 'modern');
     setDocumentProgress(els, 0, 'Stage: idle');
+    ensureUploadDots(els);
     setUploadProgress(els, 0);
     updateSelectedDocument(null);
     if (els.docUploadSpeed) {
@@ -1015,6 +1184,7 @@ export function initUI() {
     setStatus(els.loStatusArea, 'Ready. Upload a LibreOffice document to convert.', 'ok');
     setStatus(els.audioStatusArea, 'Ready. Upload audio to convert.', 'ok');
     setStatus(els.pdfStatusArea, 'Ready. Upload a PDF file and run compression or decompression.', 'ok');
+    setStatus(els.adminDiagnosticsStatusArea, 'Admin diagnostics are ready. Provide a valid admin token.', 'ok');
     setStatus(els.calcStatusArea, 'Ready. Enter values and run a calculation.', 'ok');
     initCalculator(els);
     setStatus(els.docLibraryStatusArea, 'Ready. Store documents for future users.', 'ok');
